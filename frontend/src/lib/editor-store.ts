@@ -9,7 +9,7 @@ import {
   applyEdgeChanges,
   addEdge,
 } from "@xyflow/react";
-import type { NodeType } from "../../../shared/model/node";
+import type { NodeType } from "@6flow/shared/model/node";
 import { getNodeEntry } from "./node-registry";
 
 export interface WorkflowNodeData {

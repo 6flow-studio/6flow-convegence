@@ -1,11 +1,26 @@
 "use client";
 
+import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Hexagon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
+  const { isLoading, isAuthenticated } = useConvexAuth();
   const { signIn } = useAuthActions();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace("/dashboard");
+    }
+  }, [isLoading, isAuthenticated, router]);
+
+  if (isLoading || isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-surface-0 flex items-center justify-center">

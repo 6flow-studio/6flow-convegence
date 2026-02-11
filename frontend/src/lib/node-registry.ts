@@ -1,14 +1,4 @@
-import type { NodeType } from "../../../shared/model/node";
-
-export type NodeCategory =
-  | "trigger"
-  | "action"
-  | "transform"
-  | "controlFlow"
-  | "ai"
-  | "output"
-  | "tokenization"
-  | "regulation";
+import type { NodeType, NodeCategory } from "@6flow/shared/model/node";
 
 export interface NodeRegistryEntry {
   type: NodeType;

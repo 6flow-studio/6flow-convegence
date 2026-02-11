@@ -572,6 +572,57 @@ export type NodeType =
   | 'checkKyc'
   | 'checkBalance';
 
+/** Category groupings for React Flow component lookup */
+export type NodeCategory =
+  | 'trigger'
+  | 'action'
+  | 'transform'
+  | 'controlFlow'
+  | 'ai'
+  | 'output'
+  | 'tokenization'
+  | 'regulation';
+
+/** Maps each NodeType to its NodeCategory */
+export const NODE_TYPE_TO_CATEGORY: Record<NodeType, NodeCategory> = {
+  // Triggers
+  cronTrigger: 'trigger',
+  httpTrigger: 'trigger',
+  evmLogTrigger: 'trigger',
+  // Actions
+  httpRequest: 'action',
+  evmRead: 'action',
+  evmWrite: 'action',
+  getSecret: 'action',
+  // Transforms
+  codeNode: 'transform',
+  jsonParse: 'transform',
+  abiEncode: 'transform',
+  abiDecode: 'transform',
+  merge: 'transform',
+  // Control Flow
+  filter: 'controlFlow',
+  if: 'controlFlow',
+  // AI
+  ai: 'ai',
+  // Output
+  return: 'output',
+  log: 'output',
+  error: 'output',
+  // Tokenization
+  mintToken: 'tokenization',
+  burnToken: 'tokenization',
+  transferToken: 'tokenization',
+  // Regulation
+  checkKyc: 'regulation',
+  checkBalance: 'regulation',
+};
+
+/** Get the category for a given NodeType */
+export function getNodeCategory(nodeType: NodeType): NodeCategory {
+  return NODE_TYPE_TO_CATEGORY[nodeType];
+}
+
 /** Union of all workflow nodes */
 export type WorkflowNode =
   // Triggers

@@ -12,7 +12,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useEditorStore, type WorkflowNode } from "@/lib/editor-store";
-import type { NodeType } from "../../../../shared/model/node";
+import type { NodeType } from "@6flow/shared/model/node";
 import { CATEGORY_COLORS } from "@/lib/node-registry";
 import { TriggerNode } from "./nodes/TriggerNode";
 import { ActionNode } from "./nodes/ActionNode";

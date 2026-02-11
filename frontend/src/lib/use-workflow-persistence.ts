@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import { useEditorStore } from "./editor-store";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { toReactFlowNodes, fromReactFlowNodes } from "./workflow-convert";
+import type { Id } from "../../convex/_generated/dataModel";
 
 type SaveStatus = "idle" | "saving" | "saved";
 
@@ -28,10 +29,9 @@ export function useWorkflowPersistence(workflowId: string) {
     store.setWorkflowName(workflow.name);
     store.setWorkflowId(workflow._id);
     try {
-      store.loadWorkflow(
-        JSON.parse(workflow.nodes),
-        JSON.parse(workflow.edges)
-      );
+      const parsedNodes = JSON.parse(workflow.nodes);
+      const parsedEdges = JSON.parse(workflow.edges);
+      store.loadWorkflow(toReactFlowNodes(parsedNodes), parsedEdges);
     } catch {
       // ignore parse errors
     }
@@ -44,7 +44,7 @@ export function useWorkflowPersistence(workflowId: string) {
       await saveMutation({
         id,
         name: workflowName,
-        nodes: JSON.stringify(nodes),
+        nodes: JSON.stringify(fromReactFlowNodes(nodes)),
         edges: JSON.stringify(edges),
       });
       setSaveStatus("saved");

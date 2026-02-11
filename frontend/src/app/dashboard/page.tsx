@@ -1,19 +1,31 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { api } from "../../../convex/_generated/api";
 import { Hexagon, Plus, Trash2, LogOut, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 export default function DashboardPage() {
+  const { isLoading, isAuthenticated } = useConvexAuth();
   const workflows = useQuery(api.workflows.list);
   const saveWorkflow = useMutation(api.workflows.save);
   const removeWorkflow = useMutation(api.workflows.remove);
   const { signOut } = useAuthActions();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isLoading, isAuthenticated, router]);
+
+  if (isLoading || !isAuthenticated) {
+    return null;
+  }
 
   async function handleNewWorkflow() {
     const id = await saveWorkflow({

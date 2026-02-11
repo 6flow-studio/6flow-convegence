@@ -1,0 +1,8 @@
+{
+  "name": "@6flow/shared",
+  "private": true,
+  "version": "0.1.0",
+  "exports": {
+    "./model/node": "./model/node.ts"
+  }
+}
