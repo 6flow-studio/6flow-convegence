@@ -1,0 +1,19 @@
+{
+  "name": "6flow-convergence",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@11.8.0",
+  "workspaces": [
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --filter=frontend",
+    "build": "turbo run build --filter=frontend",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  }
+}
