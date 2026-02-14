@@ -40,6 +40,15 @@ This file guides agents and contributors working in this repo.
 - Prefer fast, deterministic tests.
 - Add tests alongside changes in the relevant area (`frontend`, `backend`, `compiler`). If it's typescript, will use Jest
 
+## How to run test compiler end-to-end
+
+Starting at the root of project
+```bash
+bun shared/sample/generate_fixtures.ts
+cd compiler && cargo test
+cd ../cre-test && bun load-output.mjs --filename {filename.json} && cre workflow simulate cre-testing-workflow --target staging-settings
+```
+
 # Compiler
 - Compiler direction: use a 4-phase pipeline (Parse -> Validate -> IR -> Codegen) where visual workflow JSON is converted into a semantic IR before generating CRE output.
 - Treat convenience nodes (e.g., mintToken, checkKyc) as syntax sugar expanded in IR into primitive CRE capabilities, so codegen only emits canonical CRE patterns (initWorkflow, handlers, capabilities, consensus).

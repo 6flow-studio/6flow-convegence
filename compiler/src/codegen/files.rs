@@ -42,21 +42,20 @@ pub fn gen_secrets_yaml(ir: &WorkflowIR) -> String {
 /// Generate `workflow.yaml` content.
 pub fn gen_workflow_yaml(ir: &WorkflowIR) -> String {
     let id = &ir.metadata.id;
-    let env = if ir.metadata.is_testnet { "staging" } else { "production" };
     format!(
         r#"staging-settings:
   user-workflow:
     workflow-name: "{id}-staging"
   workflow-artifacts:
     workflow-path: "./main.ts"
-    config-path: "./config.{env}.json"
+    config-path: "./config.staging.json"
     secrets-path: "../secrets.yaml"
 production-settings:
   user-workflow:
     workflow-name: "{id}-production"
   workflow-artifacts:
     workflow-path: "./main.ts"
-    config-path: "./config.{env}.json"
+    config-path: "./config.production.json"
     secrets-path: "../secrets.yaml"
 "#
     )
@@ -99,7 +98,7 @@ pub fn gen_project_yaml(ir: &WorkflowIR) -> String {
 pub fn gen_package_json(ir: &WorkflowIR) -> String {
     let name = &ir.metadata.id;
     let mut deps = vec![
-        ("@chainlink/cre-sdk", "^1.0.10"),
+        ("@chainlink/cre-sdk", "^1.0.9"),
         ("zod", "^3.24"),
     ];
 
