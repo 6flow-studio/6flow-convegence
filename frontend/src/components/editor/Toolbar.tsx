@@ -1,45 +1,60 @@
 "use client";
 
-import { useEditorStore } from "@/lib/editor-store";
-import { fromReactFlowNodes } from "@/lib/workflow-convert";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  CheckCircle,
-  Play,
-  ArrowLeft,
-  Cloud,
-  CloudOff,
-  Loader2,
-  Download,
-  Settings2,
-} from "lucide-react";
-import Link from "next/link";
 import type {
   Workflow as SharedWorkflow,
   WorkflowEdge as SharedWorkflowEdge,
 } from "@6flow/shared/model/node";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  ArrowLeft,
+  CheckCircle,
+  Cloud,
+  CloudOff,
+  Download,
+  Loader2,
+  Play,
+  SlidersHorizontal,
+} from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { CompilerActionStatus } from "@/lib/compiler/compiler-types";
+import { useEditorStore } from "@/lib/editor-store";
+import { fromReactFlowNodes } from "@/lib/workflow-convert";
 
 interface ToolbarProps {
   saveStatus: "idle" | "saving" | "saved";
+  canRunCompiler: boolean;
+  validationStatus: CompilerActionStatus;
+  compileStatus: CompilerActionStatus;
+  validationMessage: string | null;
+  compileMessage: string | null;
+  onValidate: () => void;
+  onCompile: () => void;
+  onOpenSettings: () => void;
 }
 
-export function Toolbar({ saveStatus }: ToolbarProps) {
+export function Toolbar({
+  saveStatus,
+  canRunCompiler,
+  validationStatus,
+  compileStatus,
+  validationMessage,
+  compileMessage,
+  onValidate,
+  onCompile,
+  onOpenSettings,
+}: ToolbarProps) {
   const workflowName = useEditorStore((s) => s.workflowName);
   const workflowId = useEditorStore((s) => s.workflowId);
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
-  const globalConfig = useEditorStore((s) => s.globalConfig);
-  const setGlobalConfig = useEditorStore((s) => s.setGlobalConfig);
+  const workflowGlobalConfig = useEditorStore((s) => s.workflowGlobalConfig);
   const setWorkflowName = useEditorStore((s) => s.setWorkflowName);
+  const isBusy = validationStatus === "running" || compileStatus === "running";
+  const validateLabel =
+    validationStatus === "running" ? "Validating..." : "Validate";
+  const compileLabel = compileStatus === "running" ? "Compiling..." : "Compile";
+  const compilerHint = compileMessage ?? validationMessage;
 
   const handleDownloadJson = () => {
     const timestampIso = new Date().toISOString();
@@ -57,7 +72,7 @@ export function Toolbar({ saveStatus }: ToolbarProps) {
       version: "1.0.0",
       nodes: fromReactFlowNodes(nodes),
       edges: exportedEdges,
-      globalConfig,
+      globalConfig: workflowGlobalConfig,
       createdAt: timestampIso,
       updatedAt: timestampIso,
     };
@@ -127,51 +142,12 @@ export function Toolbar({ saveStatus }: ToolbarProps) {
 
       <div className="flex-1" />
 
+      <div className="flex items-center gap-2 text-[11px] text-zinc-600">
+        {!canRunCompiler && <span>Compiler unavailable</span>}
+        {compilerHint && canRunCompiler && <span>{compilerHint}</span>}
+      </div>
+
       <div className="flex items-center gap-1">
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-zinc-500 hover:text-zinc-300 hover:bg-surface-2 h-8 px-3 text-xs"
-            >
-              <Settings2 size={13} className="mr-1.5" />
-              Settings
-            </Button>
-          </SheetTrigger>
-          <SheetContent
-            className="bg-surface-1 border-l border-edge-dim text-zinc-200 sm:max-w-md"
-            showCloseButton
-          >
-            <SheetHeader className="border-b border-edge-dim px-4 py-3.5">
-              <SheetTitle className="text-sm text-zinc-100">Workflow Settings</SheetTitle>
-              <SheetDescription className="text-xs text-zinc-500">
-                Configure workflow-level secrets and runtime values.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="px-4 py-4 space-y-2.5">
-              <label
-                htmlFor="workflow-private-key"
-                className="text-[10px] font-semibold text-zinc-600 uppercase tracking-[0.08em] block"
-              >
-                Private Key
-              </label>
-              <Input
-                id="workflow-private-key"
-                type="password"
-                placeholder="0x..."
-                value={globalConfig.privateKey ?? ""}
-                onChange={(e) => setGlobalConfig({ privateKey: e.target.value })}
-                className="h-9 bg-surface-2 border-edge-dim text-zinc-200 text-[12px] hover:border-edge-bright focus:border-accent-blue transition-colors"
-              />
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                Stored in this workflow and included in exported JSON.
-              </p>
-            </div>
-          </SheetContent>
-        </Sheet>
-
         <Button
           variant="ghost"
           size="sm"
@@ -185,21 +161,41 @@ export function Toolbar({ saveStatus }: ToolbarProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="text-zinc-500 hover:text-zinc-300 hover:bg-surface-2 h-8 px-3 text-xs"
-          disabled
+          className="text-zinc-400 hover:text-zinc-200 hover:bg-surface-2 h-8 px-3 text-xs"
+          onClick={onOpenSettings}
         >
-          <CheckCircle size={13} className="mr-1.5" />
-          Validate
+          <SlidersHorizontal size={13} className="mr-1.5" />
+          Workflow Settings
         </Button>
 
         <Button
           variant="ghost"
           size="sm"
-          className="text-zinc-500 hover:text-zinc-300 hover:bg-surface-2 h-8 px-3 text-xs"
-          disabled
+          className="text-zinc-400 hover:text-zinc-200 hover:bg-surface-2 h-8 px-3 text-xs"
+          disabled={!canRunCompiler || isBusy}
+          onClick={onValidate}
         >
-          <Play size={13} className="mr-1.5" />
-          Compile
+          {validationStatus === "running" ? (
+            <Loader2 size={13} className="mr-1.5 animate-spin" />
+          ) : (
+            <CheckCircle size={13} className="mr-1.5" />
+          )}
+          {validateLabel}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-zinc-400 hover:text-zinc-200 hover:bg-surface-2 h-8 px-3 text-xs"
+          disabled={!canRunCompiler || isBusy}
+          onClick={onCompile}
+        >
+          {compileStatus === "running" ? (
+            <Loader2 size={13} className="mr-1.5 animate-spin" />
+          ) : (
+            <Play size={13} className="mr-1.5" />
+          )}
+          {compileLabel}
         </Button>
       </div>
     </div>

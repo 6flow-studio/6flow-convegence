@@ -10,8 +10,12 @@ import {
   addEdge,
 } from "@xyflow/react";
 import type { GlobalConfig, NodeType } from "@6flow/shared/model/node";
+import type { CompilerUiError } from "./compiler/compiler-types";
 import { getNodeEntry } from "./node-registry";
-import { createDefaultGlobalConfig } from "./workflow-global-config";
+import {
+  DEFAULT_WORKFLOW_GLOBAL_CONFIG,
+  cloneGlobalConfig,
+} from "./workflow-defaults";
 
 export interface WorkflowNodeData {
   label: string;
@@ -29,7 +33,10 @@ interface EditorState {
   selectedNodeId: string | null;
   workflowName: string;
   workflowId: string | null;
-  globalConfig: GlobalConfig;
+  workflowCreatedAt: string | null;
+  workflowGlobalConfig: GlobalConfig;
+  workflowErrors: CompilerUiError[];
+  liveNodeErrorsByNodeId: Record<string, CompilerUiError[]>;
 
   onNodesChange: OnNodesChange<WorkflowNode>;
   onEdgesChange: OnEdgesChange;
@@ -43,8 +50,16 @@ interface EditorState {
   clearSelection: () => void;
   setWorkflowName: (name: string) => void;
   setWorkflowId: (id: string | null) => void;
-  setGlobalConfig: (patch: Partial<GlobalConfig>) => void;
-  loadWorkflow: (nodes: WorkflowNode[], edges: WorkflowEdge[], globalConfig: GlobalConfig) => void;
+  setWorkflowCreatedAt: (createdAt: string | null) => void;
+  setWorkflowGlobalConfig: (config: GlobalConfig) => void;
+  setWorkflowErrors: (errors: CompilerUiError[]) => void;
+  setNodeLiveErrors: (nodeId: string, errors: CompilerUiError[]) => void;
+  clearNodeLiveErrors: (nodeId: string) => void;
+  replaceNodeLiveErrorsByNodeId: (
+    errorsByNodeId: Record<string, CompilerUiError[]>
+  ) => void;
+  clearCompilerErrors: () => void;
+  loadWorkflow: (nodes: WorkflowNode[], edges: WorkflowEdge[]) => void;
 }
 
 let nodeIdCounter = 0;
@@ -59,7 +74,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedNodeId: null,
   workflowName: "Untitled Workflow",
   workflowId: null,
-  globalConfig: createDefaultGlobalConfig(),
+  workflowCreatedAt: null,
+  workflowGlobalConfig: cloneGlobalConfig(DEFAULT_WORKFLOW_GLOBAL_CONFIG),
+  workflowErrors: [],
+  liveNodeErrorsByNodeId: {},
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
@@ -123,16 +141,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clearSelection: () => set({ selectedNodeId: null }),
   setWorkflowName: (name) => set({ workflowName: name }),
   setWorkflowId: (id) => set({ workflowId: id }),
-  setGlobalConfig: (patch) => {
+  setWorkflowCreatedAt: (createdAt) => set({ workflowCreatedAt: createdAt }),
+  setWorkflowGlobalConfig: (config) =>
     set({
-      globalConfig: {
-        ...get().globalConfig,
-        ...patch,
+      workflowGlobalConfig: cloneGlobalConfig(config),
+    }),
+  setWorkflowErrors: (errors) => set({ workflowErrors: errors }),
+  setNodeLiveErrors: (nodeId, errors) =>
+    set({
+      liveNodeErrorsByNodeId: {
+        ...get().liveNodeErrorsByNodeId,
+        [nodeId]: errors,
       },
-    });
+    }),
+  clearNodeLiveErrors: (nodeId) => {
+    const next = { ...get().liveNodeErrorsByNodeId };
+    delete next[nodeId];
+    set({ liveNodeErrorsByNodeId: next });
   },
+  replaceNodeLiveErrorsByNodeId: (errorsByNodeId) =>
+    set({ liveNodeErrorsByNodeId: errorsByNodeId }),
+  clearCompilerErrors: () =>
+    set({
+      workflowErrors: [],
+      liveNodeErrorsByNodeId: {},
+    }),
 
-  loadWorkflow: (nodes, edges, globalConfig) => {
-    set({ nodes, edges, globalConfig, selectedNodeId: null });
+  loadWorkflow: (nodes, edges) => {
+    set({
+      nodes,
+      edges,
+      selectedNodeId: null,
+      workflowErrors: [],
+      liveNodeErrorsByNodeId: {},
+    });
   },
 }));

@@ -1,4 +1,5 @@
 import type { NodeType, NodeCategory } from "@6flow/shared/model/node";
+export type { NodeCategory } from "@6flow/shared/model/node";
 
 export interface NodeRegistryEntry {
   type: NodeType;
