@@ -50,12 +50,13 @@ export function useWorkflowPersistence(workflowId: string) {
     store.setWorkflowName(workflow.name);
     store.setWorkflowId(workflow._id);
     store.setWorkflowCreatedAt(new Date(workflow._creationTime).toISOString());
+
     try {
       const parsedNodes = JSON.parse(workflow.nodes);
       const parsedEdges = JSON.parse(workflow.edges);
       store.loadWorkflow(toReactFlowNodes(parsedNodes), parsedEdges);
     } catch {
-      // ignore parse errors
+      store.loadWorkflow([], []);
     }
 
     try {
