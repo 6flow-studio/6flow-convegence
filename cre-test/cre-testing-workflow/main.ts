@@ -2,14 +2,14 @@ import { cre, ok, consensusIdenticalAggregation, Runner, type Runtime, type HTTP
 import { z } from "zod";
 
 const configSchema = z.object({
-  schedule: z.string().default("0 */5 * * * *"),
+  schedule: z.string().default("TZ=UTC 0 */5 * * * *"),
 });
 
 type Config = z.infer<typeof configSchema>;
 
 const fetch_http_1 = (sendRequester: HTTPSendRequester, config: Config) => {
   const req = {
-    url: "https://aisenseapi.com/services/v1/random_number",
+    url: "https://fake-json-api.mock.beeceptor.com/users",
     method: "GET" as const,
   };
 
@@ -35,7 +35,6 @@ const initWorkflow = (config: Config) => {
     cre.handler(
       new cre.capabilities.CronCapability().trigger({
         schedule: config.schedule,
-        timezone: "UTC",
       }),
       onCronTrigger,
     ),

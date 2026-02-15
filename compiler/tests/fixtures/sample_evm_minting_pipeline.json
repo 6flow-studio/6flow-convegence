@@ -11,6 +11,16 @@
                 "name": "VALIDATION_API_KEY",
                 "envVariable": "VALIDATION_API_KEY_VAR"
             }
+        ],
+        "rpcs": [
+            {
+                "chainName": "ethereum-testnet-sepolia",
+                "url": "https://0xrpc.io/sep"
+            },
+            {
+                "chainName": "base-testnet-sepolia",
+                "url": "https://base-sepolia.drpc.org"
+            }
         ]
     },
     "nodes": [

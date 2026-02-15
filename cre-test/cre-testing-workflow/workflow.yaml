@@ -10,5 +10,5 @@ production-settings:
     workflow-name: "simple-cron-http-production"
   workflow-artifacts:
     workflow-path: "./main.ts"
-    config-path: "./config.staging.json"
+    config-path: "./config.production.json"
     secrets-path: "../secrets.yaml"

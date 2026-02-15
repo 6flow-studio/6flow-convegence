@@ -11,6 +11,16 @@
                 "name": "DATA_API_KEY",
                 "envVariable": "DATA_API_KEY_VAR"
             }
+        ],
+        "rpcs": [
+            {
+                "chainName": "ethereum-testnet-sepolia",
+                "url": "https://rpc.example.com/ethereum-testnet-sepolia"
+            },
+            {
+                "chainName": "base-testnet-sepolia",
+                "url": "https://rpc.example.com/base-testnet-sepolia"
+            }
         ]
     },
     "nodes": [

@@ -14210,11 +14210,11 @@ var sendErrorResponse = (error) => {
   hostBindings.sendResponse(payload);
 };
 var configSchema = exports_external.object({
-  schedule: exports_external.string().default("0 */5 * * * *")
+  schedule: exports_external.string().default("TZ=UTC 0 */5 * * * *")
 });
 var fetch_http_1 = (sendRequester, config) => {
   const req = {
-    url: "https://aisenseapi.com/services/v1/random_number",
+    url: "https://fake-json-api.mock.beeceptor.com/users",
     method: "GET"
   };
   const resp = sendRequester.sendRequest(req).result();
@@ -14231,8 +14231,7 @@ var onCronTrigger = (runtime2, triggerData) => {
 var initWorkflow = (config) => {
   return [
     cre.handler(new cre.capabilities.CronCapability().trigger({
-      schedule: config.schedule,
-      timezone: "UTC"
+      schedule: config.schedule
     }), onCronTrigger)
   ];
 };

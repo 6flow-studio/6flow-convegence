@@ -11,6 +11,12 @@
                 "name": "WEBHOOK_AUTH_TOKEN",
                 "envVariable": "WEBHOOK_AUTH_TOKEN_VAR"
             }
+        ],
+        "rpcs": [
+            {
+                "chainName": "ethereum-testnet-sepolia",
+                "url": "https://0xrpc.io/sep"
+            }
         ]
     },
     "nodes": [

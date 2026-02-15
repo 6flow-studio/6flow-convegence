@@ -12,8 +12,14 @@ export const simpleCronHttp: Workflow = {
   version: '1.0.0',
   globalConfig: {
     isTestnet: true,
-    defaultChainSelector: 'ethereum-mainnet',
+    defaultChainSelector: 'ethereum-testnet-sepolia',
     secrets: [],
+    rpcs:[
+      {
+        chainName: 'ethereum-testnet-sepolia',
+        url: 'https://0xrpc.io/sep',
+      }
+    ],
   },
   nodes: [
     {
@@ -36,7 +42,7 @@ export const simpleCronHttp: Workflow = {
         label: 'GET Status',
         config: {
           method: 'GET',
-          url: 'https://aisenseapi.com/services/v1/random_number',
+          url: 'https://fake-json-api.mock.beeceptor.com/users',
           authentication: { type: 'none' },
           responseFormat: 'json',
           timeout: 5000,
@@ -79,6 +85,12 @@ export const webhookParseLog: Workflow = {
     defaultChainSelector: 'ethereum-mainnet',
     secrets: [
       { name: 'WEBHOOK_AUTH_TOKEN', envVariable: 'WEBHOOK_AUTH_TOKEN_VAR' },
+    ],
+    rpcs:[
+      {
+        chainName: 'ethereum-testnet-sepolia',
+        url: 'https://0xrpc.io/sep',
+      }
     ],
   },
   nodes: [
@@ -160,6 +172,16 @@ export const filterBranching: Workflow = {
     defaultChainSelector: 'ethereum-testnet-sepolia',
     secrets: [
       { name: 'DATA_API_KEY', envVariable: 'DATA_API_KEY_VAR' },
+    ],
+    rpcs: [
+      {
+        chainName: 'ethereum-testnet-sepolia',
+        url: 'https://rpc.example.com/ethereum-testnet-sepolia',
+      },
+      {
+        chainName: 'base-testnet-sepolia',
+        url: 'https://rpc.example.com/base-testnet-sepolia',
+      },
     ],
   },
   nodes: [
@@ -285,6 +307,16 @@ export const evmMintingPipeline: Workflow = {
     defaultChainSelector: 'ethereum-testnet-sepolia',
     secrets: [
       { name: 'VALIDATION_API_KEY', envVariable: 'VALIDATION_API_KEY_VAR' },
+    ],
+    rpcs: [
+      {
+        chainName: 'ethereum-testnet-sepolia',
+        url: 'https://0xrpc.io/sep',
+      },
+      {
+        chainName: 'base-testnet-sepolia',
+        url: 'https://base-sepolia.drpc.org',
+      },
     ],
   },
   nodes: [

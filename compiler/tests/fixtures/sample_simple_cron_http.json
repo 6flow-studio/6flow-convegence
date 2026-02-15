@@ -6,7 +6,13 @@
     "globalConfig": {
         "isTestnet": true,
         "defaultChainSelector": "ethereum-mainnet",
-        "secrets": []
+        "secrets": [],
+        "rpcs": [
+            {
+                "chainName": "ethereum-testnet-sepolia",
+                "url": "https://0xrpc.io/sep"
+            }
+        ]
     },
     "nodes": [
         {
@@ -35,7 +41,7 @@
                 "label": "GET Status",
                 "config": {
                     "method": "GET",
-                    "url": "https://aisenseapi.com/services/v1/random_number",
+                    "url": "https://fake-json-api.mock.beeceptor.com/users",
                     "authentication": {
                         "type": "none"
                     },

@@ -1,5 +1,7 @@
 //! Step sequence builder: walk topo-sorted nodes, expand convenience nodes,
 //! detect branch/merge patterns, build IR Block/Step structures.
+//! SYNC NOTE: `lower_node` and branch handling matches must be updated when
+//! node types/configs change in `shared/model/node.ts`.
 
 use std::collections::{HashMap, HashSet};
 
