@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, render, Text, useApp, useCursor, useInput, useStdout } from "ink";
 
-type FocusPane = "projects" | "actions" | "console";
+type FocusPane = "status" | "projects" | "actions" | "console";
 
 type Project = {
   id: string;
@@ -199,10 +199,28 @@ function App() {
       return;
     }
 
+    if (input === "1") {
+      setFocusPane("status");
+      return;
+    }
+    if (input === "2") {
+      setFocusPane("projects");
+      return;
+    }
+    if (input === "3") {
+      setFocusPane("actions");
+      return;
+    }
+    if (input === "4") {
+      setFocusPane("console");
+      return;
+    }
+
     if (key.tab) {
-      if (focusPane === "projects") setFocusPane("actions");
+      if (focusPane === "status") setFocusPane("projects");
+      else if (focusPane === "projects") setFocusPane("actions");
       else if (focusPane === "actions") setFocusPane("console");
-      else setFocusPane("projects");
+      else setFocusPane("status");
       return;
     }
 
@@ -222,7 +240,7 @@ function App() {
       if (key.upArrow || input === "k") {
         setSelectedActionIndex((value) => Math.max(value - 1, 0));
       }
-      if (key.return) {
+      if (key.return || key.space || input === " ") {
         void runSelectedAction();
       }
     }
@@ -251,20 +269,20 @@ function App() {
 
   return (
     <Box flexDirection="column" width={terminalColumns} height={terminalRows}>
-      <Pane title="Status / Info" focused={false} height={STATUS_PANE_HEIGHT}>
+      <Pane title="Status / Info [1]" focused={focusPane === "status"} height={STATUS_PANE_HEIGHT}>
         <Text color="cyan">六</Text>
         <Text>{statusLine}</Text>
         <Text>
           projects: {projects.length} | selected: {selectedProject?.name ?? "-"} | last sync: {lastSyncAt}
         </Text>
         <Text color="gray">
-          keys: tab switch pane, j/k move, enter run, c clear console, g top logs, G bottom logs, q quit
+          keys: 1-4 pane, tab next pane, j/k move, enter/space run, c clear console, g top logs, G bottom logs, q quit
         </Text>
       </Pane>
 
       <Box flexGrow={1}>
         <Box flexGrow={3}>
-          <Pane title={`Projects [${projects.length}]`} focused={focusPane === "projects"} height={bodyHeight}>
+          <Pane title="Projects [2]" focused={focusPane === "projects"} height={bodyHeight}>
             {projects.map((project, index) => (
               <Text key={project.id} color={index === selectedProjectIndex ? "cyan" : undefined}>
                 {index === selectedProjectIndex ? "> " : "  "}
@@ -275,7 +293,7 @@ function App() {
         </Box>
 
         <Box flexGrow={2} flexDirection="column">
-          <Pane title={`Actions [${ACTIONS.length}]`} focused={focusPane === "actions"} height={actionsPaneHeight}>
+          <Pane title="Actions [3]" focused={focusPane === "actions"} height={actionsPaneHeight}>
             {ACTIONS.map((action, index) => (
               <Text key={action.id} color={index === selectedActionIndex ? "cyan" : undefined}>
                 {index === selectedActionIndex ? "> " : "  "}
@@ -291,7 +309,7 @@ function App() {
           </Pane>
 
           <Pane
-            title={`Console [${logs.length}] (${consoleRange})`}
+            title={`Console [4] (${consoleRange})`}
             focused={focusPane === "console"}
             height={CONSOLE_PANE_HEIGHT}
           >
