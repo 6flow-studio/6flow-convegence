@@ -12,6 +12,7 @@ import { Toolbar } from "./Toolbar";
 import { StatusBar } from "./StatusBar";
 import { CompilerErrorsPanel } from "./CompilerErrorsPanel";
 import { WorkflowSettingsSheet } from "./WorkflowSettingsSheet";
+import { CompileProgressModal } from "./CompileProgressModal";
 
 interface WorkflowEditorProps {
   workflowId: string;
@@ -27,8 +28,11 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
     compileStatus,
     validationMessage,
     compileMessage,
+    compileModalOpen,
+    compiledZipDownload,
     onValidate,
     onCompile,
+    onCloseCompileModal,
   } = useCompiler();
   const workflowGlobalConfig = useEditorStore((state) => state.workflowGlobalConfig);
   const setWorkflowGlobalConfig = useEditorStore(
@@ -82,6 +86,14 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
           onOpenChange={setSettingsOpen}
           value={workflowGlobalConfig}
           onSave={setWorkflowGlobalConfig}
+        />
+        <CompileProgressModal
+          open={compileModalOpen}
+          status={compileStatus}
+          message={compileMessage}
+          downloadUrl={compiledZipDownload?.url ?? null}
+          downloadFileName={compiledZipDownload?.fileName ?? null}
+          onClose={onCloseCompileModal}
         />
       </div>
     </ReactFlowProvider>

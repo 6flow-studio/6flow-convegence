@@ -9,24 +9,16 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "") || "workflow";
 }
 
-export async function downloadCompiledZip(
-  files: CompiledFile[],
-  workflowName: string
-): Promise<void> {
+export function getCompiledZipFileName(workflowName: string): string {
+  return `${slugify(workflowName)}-cre-bundle.zip`;
+}
+
+export async function buildCompiledZipBlob(files: CompiledFile[]): Promise<Blob> {
   const zip = new JSZip();
 
   for (const file of files) {
     zip.file(file.path, file.content);
   }
 
-  const blob = await zip.generateAsync({ type: "blob" });
-  const fileName = `${slugify(workflowName)}-cre-bundle.zip`;
-  const url = URL.createObjectURL(blob);
-
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
+  return zip.generateAsync({ type: "blob" });
 }

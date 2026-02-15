@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation } from "convex/react";
 import { fromReactFlowNodes } from "@/lib/workflow-convert";
 import { useEditorStore } from "@/lib/editor-store";
 import {
@@ -11,7 +12,17 @@ import {
 } from "@/lib/compiler/compiler-types";
 import { getCompilerWorkerClient } from "@/lib/compiler/compiler-worker-client";
 import { buildWorkflowInput } from "@/lib/compiler/build-workflow-input";
-import { downloadCompiledZip } from "@/lib/compiler/download-compiled-zip";
+import {
+  buildCompiledZipBlob,
+  getCompiledZipFileName,
+} from "@/lib/compiler/download-compiled-zip";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
+
+interface CompiledZipDownload {
+  url: string;
+  fileName: string;
+}
 
 interface UseCompilerResult {
   canRunCompiler: boolean;
@@ -21,8 +32,11 @@ interface UseCompilerResult {
   compileStatus: CompilerActionStatus;
   validationMessage: string | null;
   compileMessage: string | null;
+  compileModalOpen: boolean;
+  compiledZipDownload: CompiledZipDownload | null;
   onValidate: () => Promise<void>;
   onCompile: () => Promise<void>;
+  onCloseCompileModal: () => void;
 }
 
 function toMessage(error: unknown): string {
@@ -38,6 +52,8 @@ function toMessage(error: unknown): string {
 export function useCompiler(): UseCompilerResult {
   const nodes = useEditorStore((state) => state.nodes);
   const selectedNodeId = useEditorStore((state) => state.selectedNodeId);
+  const workflowId = useEditorStore((state) => state.workflowId);
+  const workflowName = useEditorStore((state) => state.workflowName);
   const workflowGlobalConfig = useEditorStore((state) => state.workflowGlobalConfig);
   const setWorkflowErrors = useEditorStore((state) => state.setWorkflowErrors);
   const setNodeLiveErrors = useEditorStore((state) => state.setNodeLiveErrors);
@@ -45,6 +61,10 @@ export function useCompiler(): UseCompilerResult {
     (state) => state.replaceNodeLiveErrorsByNodeId
   );
   const clearCompilerErrors = useEditorStore((state) => state.clearCompilerErrors);
+  const generateCompileUploadUrl = useMutation(
+    api.workflows.generateCompileUploadUrl
+  );
+  const saveCompiledArtifact = useMutation(api.workflows.saveCompiledArtifact);
 
   const workerClient = useMemo(() => getCompilerWorkerClient(), []);
 
@@ -56,6 +76,9 @@ export function useCompiler(): UseCompilerResult {
     useState<CompilerActionStatus>("idle");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [compileMessage, setCompileMessage] = useState<string | null>(null);
+  const [compileModalOpen, setCompileModalOpen] = useState(false);
+  const [compiledZipDownload, setCompiledZipDownload] =
+    useState<CompiledZipDownload | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -95,6 +118,15 @@ export function useCompiler(): UseCompilerResult {
     },
     [replaceNodeLiveErrorsByNodeId, setWorkflowErrors]
   );
+
+  const resetCompiledZipDownload = useCallback(() => {
+    setCompiledZipDownload((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev.url);
+      }
+      return null;
+    });
+  }, []);
 
   const serializeWorkflow = useCallback((): string => {
     const state = useEditorStore.getState();
@@ -141,6 +173,14 @@ export function useCompiler(): UseCompilerResult {
       cancelled = true;
     };
   }, [setWorkflowErrors, workerClient]);
+
+  useEffect(() => {
+    return () => {
+      if (compiledZipDownload) {
+        URL.revokeObjectURL(compiledZipDownload.url);
+      }
+    };
+  }, [compiledZipDownload]);
 
   const nodeValidationSequence = useRef(0);
 
@@ -234,6 +274,10 @@ export function useCompiler(): UseCompilerResult {
       return;
     }
 
+    let downloadReady = false;
+
+    resetCompiledZipDownload();
+    setCompileModalOpen(true);
     setCompileStatus("running");
     setCompileMessage("Compiling workflow...");
 
@@ -247,27 +291,84 @@ export function useCompiler(): UseCompilerResult {
         return;
       }
 
+      const fileName = getCompiledZipFileName(workflowName);
+      const blob = await buildCompiledZipBlob(result.files);
+      const downloadUrl = URL.createObjectURL(blob);
+      setCompiledZipDownload({
+        url: downloadUrl,
+        fileName,
+      });
+      downloadReady = true;
+
+      if (!workflowId) {
+        applyErrors([
+          toCompilerUiError(
+            "Compile succeeded but workflow id is missing for storage upload",
+            "W105",
+            "Storage"
+          ),
+        ]);
+        setCompileStatus("error");
+        setCompileMessage("Compiled, but upload failed (workflow id missing)");
+        return;
+      }
+
+      setCompileMessage("Uploading compiled bundle...");
+      const uploadUrl = await generateCompileUploadUrl({});
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: blob,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Storage upload failed (${uploadResponse.status})`);
+      }
+
+      const uploadPayload = (await uploadResponse.json()) as {
+        storageId?: string;
+      };
+      if (!uploadPayload.storageId) {
+        throw new Error("Storage upload returned no storageId");
+      }
+
+      await saveCompiledArtifact({
+        id: workflowId as Id<"workflows">,
+        storageId: uploadPayload.storageId as Id<"_storage">,
+        fileName,
+        fileSize: blob.size,
+        fileCount: result.files.length,
+        compiledAt: Date.now(),
+      });
+
       clearCompilerErrors();
-      await downloadCompiledZip(
-        result.files,
-        useEditorStore.getState().workflowName
-      );
       setCompileStatus("success");
-      setCompileMessage(`Compiled ${result.files.length} file(s)`);
+      setCompileMessage(
+        `Compiled ${result.files.length} file(s) and uploaded to storage`
+      );
     } catch (error) {
       const message = toMessage(error);
       applyErrors([
-        toCompilerUiError(`Compile failed: ${message}`, "W104", "Worker"),
+        toCompilerUiError(`Compile/upload failed: ${message}`, "W104", "Worker"),
       ]);
       setCompileStatus("error");
-      setCompileMessage("Compile failed");
+      setCompileMessage(
+        downloadReady
+          ? "Upload failed (download .zip is still available)"
+          : "Compile failed"
+      );
     }
   }, [
     applyErrors,
     clearCompilerErrors,
     compilerError,
     compilerReady,
+    generateCompileUploadUrl,
+    resetCompiledZipDownload,
+    saveCompiledArtifact,
     serializeWorkflow,
+    workflowId,
+    workflowName,
     workerClient,
   ]);
 
@@ -279,7 +380,10 @@ export function useCompiler(): UseCompilerResult {
     compileStatus,
     validationMessage,
     compileMessage,
+    compileModalOpen,
+    compiledZipDownload,
     onValidate,
     onCompile,
+    onCloseCompileModal: () => setCompileModalOpen(false),
   };
 }
