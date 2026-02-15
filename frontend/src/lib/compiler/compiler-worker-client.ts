@@ -8,7 +8,7 @@ import type {
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
-  reject: (reason: Error) => void;
+  reject: (reason: unknown) => void;
 }
 
 class CompilerWorkerClient {
@@ -68,13 +68,13 @@ class CompilerWorkerClient {
     const id = this.requestId++;
     const request: CompilerWorkerRequest<T> = { id, type, payload };
 
-    return new Promise((resolve, reject) => {
+    return new Promise<CompilerWorkerSuccessPayloadMap[T]>((resolve, reject) => {
       this.pending.set(id, {
-        resolve,
+        resolve: (value) => resolve(value as CompilerWorkerSuccessPayloadMap[T]),
         reject,
       });
       worker.postMessage(request);
-    }) as Promise<CompilerWorkerSuccessPayloadMap[T]>;
+    });
   }
 
   async init(): Promise<void> {

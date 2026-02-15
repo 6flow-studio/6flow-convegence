@@ -32,11 +32,19 @@ export interface CompilerWorkerSuccessPayloadMap {
 
 export type CompilerWorkerRequestType = keyof CompilerWorkerPayloadMap;
 
-export type CompilerWorkerRequest<T extends CompilerWorkerRequestType = CompilerWorkerRequestType> = {
+type CompilerWorkerRequestByType<T extends CompilerWorkerRequestType> = {
   id: number;
   type: T;
   payload: CompilerWorkerPayloadMap[T];
 };
+
+export type CompilerWorkerRequest<
+  T extends CompilerWorkerRequestType = CompilerWorkerRequestType,
+> = CompilerWorkerRequestByType<T>;
+
+export type CompilerWorkerRequestUnion = {
+  [K in CompilerWorkerRequestType]: CompilerWorkerRequestByType<K>;
+}[CompilerWorkerRequestType];
 
 export type CompilerWorkerSuccessResponse<
   T extends CompilerWorkerRequestType = CompilerWorkerRequestType,
@@ -47,6 +55,10 @@ export type CompilerWorkerSuccessResponse<
   payload: CompilerWorkerSuccessPayloadMap[T];
 };
 
+export type CompilerWorkerSuccessResponseUnion = {
+  [K in CompilerWorkerRequestType]: CompilerWorkerSuccessResponse<K>;
+}[CompilerWorkerRequestType];
+
 export type CompilerWorkerErrorResponse = {
   id: number;
   ok: false;
@@ -55,5 +67,5 @@ export type CompilerWorkerErrorResponse = {
 };
 
 export type CompilerWorkerResponse =
-  | CompilerWorkerSuccessResponse
+  | CompilerWorkerSuccessResponseUnion
   | CompilerWorkerErrorResponse;

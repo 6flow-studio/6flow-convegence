@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type {
-  CompilerWorkerRequest,
+  CompilerWorkerRequestUnion,
   CompilerWorkerResponse,
 } from "./worker-messages";
 import type {
@@ -20,19 +20,34 @@ type CompilerWasmModule = {
 
 let compilerModulePromise: Promise<CompilerWasmModule> | null = null;
 
+function toCompilerAssetUrl(path: string): URL {
+  if (self.location.origin && self.location.origin !== "null") {
+    return new URL(path, `${self.location.origin}/`);
+  }
+  return new URL(path, self.location.href);
+}
+
 async function ensureCompilerModule(): Promise<CompilerWasmModule> {
   if (compilerModulePromise) {
     return compilerModulePromise;
   }
 
   compilerModulePromise = (async () => {
-    const compilerModuleUrl: string = "/compiler/sixflow_compiler.js";
+    const compilerModuleUrl = toCompilerAssetUrl(
+      "/compiler/sixflow_compiler.js"
+    ).toString();
     const module = (await import(
       /* webpackIgnore: true */ compilerModuleUrl
     )) as CompilerWasmModule;
 
     if (typeof module.default === "function") {
-      await module.default("/compiler/sixflow_compiler_bg.wasm");
+      try {
+        // Let wasm-bindgen resolve the .wasm path from the imported module URL.
+        await module.default();
+      } catch {
+        // Fallback for runtimes where implicit resolution fails in worker scope.
+        await module.default(toCompilerAssetUrl("/compiler/sixflow_compiler_bg.wasm"));
+      }
     }
 
     if (
@@ -140,6 +155,17 @@ function extractArrayCandidates(raw: Record<string, unknown>): unknown[] {
 }
 
 function normalizeCompileResult(raw: unknown): CompileWorkflowResult {
+  if (typeof raw === "string") {
+    try {
+      return normalizeCompileResult(JSON.parse(raw));
+    } catch {
+      return {
+        status: "errors",
+        errors: [toCompilerUiError("Compiler returned non-JSON string output", "W006")],
+      };
+    }
+  }
+
   if (!raw || typeof raw !== "object") {
     return {
       status: "errors",
@@ -200,7 +226,7 @@ function normalizeCompileResult(raw: unknown): CompileWorkflowResult {
   };
 }
 
-async function handleRequest(request: CompilerWorkerRequest): Promise<unknown> {
+async function handleRequest(request: CompilerWorkerRequestUnion): Promise<unknown> {
   const compiler = await ensureCompilerModule();
 
   switch (request.type) {
@@ -228,7 +254,7 @@ async function handleRequest(request: CompilerWorkerRequest): Promise<unknown> {
   }
 }
 
-self.onmessage = (event: MessageEvent<CompilerWorkerRequest>) => {
+self.onmessage = (event: MessageEvent<CompilerWorkerRequestUnion>) => {
   const request = event.data;
 
   void (async () => {
