@@ -119,8 +119,8 @@ pub struct CronTriggerDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpTriggerDef {
-    pub path: ValueExpr,
-    pub methods: Vec<String>,
+    /// EVM-signature authorized keys (empty for simulation/testnet).
+    pub authorized_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,7 +147,7 @@ pub enum TriggerParam {
     None,
     /// `trigger: CronTrigger` — has `scheduledTime`, `actualTime`.
     CronTrigger,
-    /// `request: HTTPRequest` — has `method`, `path`, `headers`, `body`.
+    /// `triggerData: HTTPPayload` — has `input: Uint8Array`.
     HttpRequest,
     /// `log: EVMLog` — has `topics`, `data`, `address`.
     EvmLog,

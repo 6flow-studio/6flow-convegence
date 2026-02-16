@@ -1,13 +1,13 @@
 staging-settings:
   user-workflow:
-    workflow-name: "simple-cron-http-staging"
+    workflow-name: "evm-minting-pipeline-staging"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
     secrets-path: "../secrets.yaml"
 production-settings:
   user-workflow:
-    workflow-name: "simple-cron-http-production"
+    workflow-name: "evm-minting-pipeline-production"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.production.json"

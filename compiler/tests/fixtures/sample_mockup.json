@@ -1,5 +1,5 @@
 {
-    "id": "evm-minting-pipeline",
+    "id": "mockup-workflow",
     "name": "Cross-Chain KYC Minting",
     "description": "On-chain Transfer event triggers balance check, API validation, and conditional token minting on another chain",
     "version": "1.0.0",

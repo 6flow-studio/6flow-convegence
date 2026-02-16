@@ -12,7 +12,7 @@ use super::writer::CodeWriter;
 pub fn emit_handler(ir: &WorkflowIR, w: &mut CodeWriter) {
     let (handler_name, trigger_type, trigger_param) = match &ir.trigger_param {
         TriggerParam::CronTrigger => ("onCronTrigger", "CronTrigger", "triggerData"),
-        TriggerParam::HttpRequest => ("onHttpRequest", "HTTPRequest", "triggerData"),
+        TriggerParam::HttpRequest => ("onHttpRequest", "HTTPPayload", "triggerData"),
         TriggerParam::EvmLog => ("onLogTrigger", "EVMLog", "triggerData"),
         TriggerParam::None => ("onTrigger", "", ""),
     };

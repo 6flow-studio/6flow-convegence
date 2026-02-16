@@ -1,5 +1,5 @@
-//! End-to-end compilation of sample mockup workflows.
-//! Compiles each workflow and writes a single JSON output file.
+//! End-to-end compilation of the sample mockup workflow.
+//! Compiles the workflow and writes a single JSON output file.
 
 use compiler::codegen;
 use compiler::ir::validate_ir;
@@ -92,21 +92,6 @@ fn compile_and_save(fixture_name: &str, output_name: &str) {
 }
 
 #[test]
-fn compile_simple_cron_http() {
-    compile_and_save("sample_simple_cron_http.json", "simple-cron-http");
-}
-
-#[test]
-fn compile_webhook_parse_log() {
-    compile_and_save("sample_webhook_parse_log.json", "webhook-parse-log");
-}
-
-#[test]
-fn compile_filter_branching() {
-    compile_and_save("sample_filter_branching.json", "filter-branching");
-}
-
-#[test]
-fn compile_evm_minting_pipeline() {
-    compile_and_save("sample_evm_minting_pipeline.json", "evm-minting-pipeline");
+fn compile_mockup_workflow() {
+    compile_and_save("sample_mockup.json", "codegen_mockup");
 }

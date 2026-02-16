@@ -325,6 +325,20 @@ fn resolve_predecessor_input(
         return ValueExpr::raw("/* no predecessor */");
     };
 
+    // If predecessor is a trigger node, reference triggerData instead of a step binding
+    if let Some(pred_node) = node_map.get(*pred_id) {
+        match pred_node.node_type() {
+            "cronTrigger" | "httpTrigger" | "evmLogTrigger" => {
+                let field = match pred_node.node_type() {
+                    "httpTrigger" => "input",
+                    _ => if default_field.is_empty() { "input" } else { default_field },
+                };
+                return ValueExpr::trigger_data(field);
+            }
+            _ => {}
+        }
+    }
+
     // Resolve through id_map in case predecessor was a convenience node
     let step_id = id_map.get(*pred_id).cloned().unwrap_or_else(|| pred_id.to_string());
 

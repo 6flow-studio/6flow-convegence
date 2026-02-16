@@ -15,6 +15,7 @@ pub struct ImportSet {
     pub consensus_by_fields: bool,
     pub ok_fn: bool,
     pub cron_trigger_type: bool,
+    pub http_payload_type: bool,
     pub evm_log_type: bool,
     pub get_network: bool,
     pub bytes_to_hex: bool,
@@ -44,6 +45,7 @@ pub fn collect_imports(ir: &WorkflowIR) -> ImportSet {
     // Trigger-specific
     match &ir.trigger_param {
         TriggerParam::CronTrigger => imports.cron_trigger_type = true,
+        TriggerParam::HttpRequest => imports.http_payload_type = true,
         TriggerParam::EvmLog => {
             imports.evm_log_type = true;
             imports.get_network = true;
@@ -138,6 +140,9 @@ pub fn emit_imports(imports: &ImportSet, w: &mut CodeWriter) {
     }
     if imports.cron_trigger_type {
         sdk_types.push("type CronTrigger");
+    }
+    if imports.http_payload_type {
+        sdk_types.push("type HTTPPayload");
     }
     if imports.evm_log_type {
         sdk_types.push("EVMLog");

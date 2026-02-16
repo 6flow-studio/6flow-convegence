@@ -2,3 +2,5 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: https://0xrpc.io/sep
+    - chain-name: base-testnet-sepolia
+      url: https://base-sepolia.drpc.org

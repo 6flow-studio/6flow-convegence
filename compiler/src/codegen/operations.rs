@@ -123,10 +123,17 @@ pub fn emit_code_node(step: &Step, op: &CodeNodeOp, w: &mut CodeWriter) {
 pub fn emit_json_parse(step: &Step, op: &JsonParseOp, w: &mut CodeWriter) {
     w.line(&format!("// {}", step.label));
     let input = emit_value_expr(&op.input);
-    let parse_expr = format!(
-        "JSON.parse(Buffer.from({}, \"base64\").toString(\"utf-8\"))",
-        input
-    );
+
+    let parse_expr = if matches!(&op.input, ValueExpr::TriggerDataRef { .. }) {
+        // Trigger input is Uint8Array — decode directly
+        format!("JSON.parse(new TextDecoder().decode({}))", input)
+    } else {
+        // HTTP response body is base64-encoded
+        format!(
+            "JSON.parse(Buffer.from({}, \"base64\").toString(\"utf-8\"))",
+            input
+        )
+    };
 
     let final_expr = if let Some(ref path) = op.source_path {
         format!("{}{}", parse_expr, path)

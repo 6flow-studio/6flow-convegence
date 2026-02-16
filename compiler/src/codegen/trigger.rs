@@ -23,7 +23,7 @@ fn emit_init_workflow(ir: &WorkflowIR, w: &mut CodeWriter) {
 
     match &ir.trigger {
         TriggerDef::Cron(cron) => emit_cron_init(cron, handler_name, w),
-        TriggerDef::Http(http) => emit_http_init(http, handler_name, w),
+        TriggerDef::Http(http) => emit_http_init(http, ir, handler_name, w),
         TriggerDef::EvmLog(evm_log) => emit_evm_log_init(evm_log, ir, handler_name, w),
     }
 
@@ -47,20 +47,33 @@ fn emit_cron_init(cron: &CronTriggerDef, handler_name: &str, w: &mut CodeWriter)
     w.line("];");
 }
 
-fn emit_http_init(http: &HttpTriggerDef, handler_name: &str, w: &mut CodeWriter) {
+fn emit_http_init(http: &HttpTriggerDef, ir: &WorkflowIR, handler_name: &str, w: &mut CodeWriter) {
     w.line("return [");
     w.indent();
     w.line("cre.handler(");
     w.indent();
-    w.line("new cre.capabilities.HTTPCapability().trigger({");
-    w.indent();
-    w.line(&format!("path: {},", emit_value_expr_init(&http.path)));
-    w.line(&format!(
-        "methods: [{}],",
-        http.methods.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ")
-    ));
-    w.dedent();
-    w.line("}),");
+
+    if http.authorized_keys.is_empty() || ir.metadata.is_testnet {
+        // Simulation/testnet — empty config
+        w.line("new cre.capabilities.HTTPCapability().trigger({}),");
+    } else {
+        // Production — with authorized keys
+        w.line("new cre.capabilities.HTTPCapability().trigger({");
+        w.indent();
+        w.line("authorizedKeys: [");
+        w.indent();
+        for key in &http.authorized_keys {
+            w.line(&format!(
+                "{{ type: \"KEY_TYPE_ECDSA_EVM\", publicKey: \"{}\" }},",
+                key
+            ));
+        }
+        w.dedent();
+        w.line("],");
+        w.dedent();
+        w.line("}),");
+    }
+
     w.line(&format!("{},", handler_name));
     w.dedent();
     w.line("),");
