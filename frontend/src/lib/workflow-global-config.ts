@@ -14,7 +14,6 @@ export function createDefaultGlobalConfig(): GlobalConfig {
     isTestnet: true,
     defaultChainSelector: DEFAULT_CHAIN_SELECTOR,
     secrets: [],
-    privateKey: "",
   };
 }
 
@@ -41,6 +40,5 @@ export function sanitizeGlobalConfig(value: unknown): GlobalConfig {
         ? incoming.defaultChainSelector
         : defaults.defaultChainSelector,
     secrets,
-    privateKey: typeof incoming.privateKey === "string" ? incoming.privateKey : defaults.privateKey,
   };
 }
