@@ -85,6 +85,7 @@ export interface GlobalConfig {
   isTestnet: boolean;
   defaultChainSelector: string;
   secrets: SecretReference[];
+  privateKey?: string; // Workflow signer private key
   rpcs: RpcEntry[];
 }
 

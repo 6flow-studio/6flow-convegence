@@ -10,8 +10,8 @@ import {
   addEdge,
 } from "@xyflow/react";
 import type { GlobalConfig, NodeType } from "@6flow/shared/model/node";
-import { getNodeEntry } from "./node-registry";
 import type { CompilerUiError } from "./compiler/compiler-types";
+import { getNodeEntry } from "./node-registry";
 import {
   DEFAULT_WORKFLOW_GLOBAL_CONFIG,
   cloneGlobalConfig,
