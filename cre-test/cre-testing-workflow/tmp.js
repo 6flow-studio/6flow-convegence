@@ -14209,34 +14209,43 @@ var sendErrorResponse = (error) => {
   }
   hostBindings.sendResponse(payload);
 };
-var configSchema = exports_external.object({
-  schedule: exports_external.string().default("TZ=UTC 0 */5 * * * *")
-});
-var fetch_http_1 = (sendRequester, config) => {
+var fetch_ai_1 = (sendRequester, config) => {
+  const body = {
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "You are an operations assistant. Return a concise next-action recommendation in JSON." },
+      { role: "user", content: "Analyze the incoming webhook request and return one clear recommended action." }
+    ],
+    temperature: 0.2,
+    max_tokens: 200
+  };
+  const bodyBytes = new TextEncoder().encode(JSON.stringify(body));
   const req = {
-    url: "https://fake-json-api.mock.beeceptor.com/users",
-    method: "GET"
+    url: "https://api.openai.com/v1/chat/completions",
+    method: "POST",
+    body: Buffer.from(bodyBytes).toString("base64"),
+    headers: {
+      "Content-Type": "application/json"
+    }
   };
   const resp = sendRequester.sendRequest(req).result();
   if (!ok(resp)) {
-    throw new Error(`HTTP request failed with status: ${resp.statusCode}`);
+    throw new Error(`AI call failed with status: ${resp.statusCode}`);
   }
-  return { statusCode: resp.statusCode, body: resp.body, headers: resp.headers };
+  return JSON.parse(Buffer.from(resp.body, "base64").toString("utf-8"));
 };
-var onCronTrigger = (runtime2, triggerData) => {
+var onHttpRequest = (runtime2, triggerData) => {
   const httpClient = new cre.capabilities.HTTPClient;
-  const step_http_1 = httpClient.sendRequest(runtime2, fetch_http_1, consensusIdenticalAggregation())(runtime2.config).result();
-  return step_http_1.body;
+  const step_ai_1 = httpClient.sendRequest(runtime2, fetch_ai_1, consensusIdenticalAggregation())(runtime2.config).result();
+  return step_ai_1.choices[0].message.content;
 };
 var initWorkflow = (config) => {
   return [
-    cre.handler(new cre.capabilities.CronCapability().trigger({
-      schedule: config.schedule
-    }), onCronTrigger)
+    cre.handler(new cre.capabilities.HTTPCapability().trigger({}), onHttpRequest)
   ];
 };
 async function main() {
-  const runner = await Runner.newRunner({ configSchema });
+  const runner = await Runner.newRunner();
   await runner.run(initWorkflow);
 }
 main().catch(sendErrorResponse);

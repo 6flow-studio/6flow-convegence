@@ -165,9 +165,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD';
 
 export type WebhookAuth =
   | { type: 'none' }
-  | { type: 'evmSignature'; authorizedAddresses: string[] }
-  | { type: 'headerAuth'; headerName: string; headerValueSecret: string }
-  | { type: 'basicAuth'; usernameSecret: string; passwordSecret: string };
+  | { type: 'evmSignature'; authorizedAddresses: string[] };
 
 export type WebhookResponseMode = 'immediate' | 'lastNode' | 'respondNode';
 
@@ -221,10 +219,7 @@ export interface EvmLogTriggerOutput {
 /** HTTP Request - fetch/send data to external APIs */
 export type HttpAuthConfig =
   | { type: 'none' }
-  | { type: 'headerAuth'; headerName: string; valueSecret: string }
-  | { type: 'basicAuth'; usernameSecret: string; passwordSecret: string }
-  | { type: 'bearerToken'; tokenSecret: string }
-  | { type: 'queryAuth'; paramName: string; valueSecret: string };
+  | { type: 'bearerToken'; tokenSecret: string };
 
 export interface HttpRequestConfig {
   method: HttpMethod;

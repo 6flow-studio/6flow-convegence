@@ -357,20 +357,6 @@ pub enum WebhookAuth {
         #[serde(rename = "authorizedAddresses")]
         authorized_addresses: Vec<String>,
     },
-    #[serde(rename = "headerAuth")]
-    HeaderAuth {
-        #[serde(rename = "headerName")]
-        header_name: String,
-        #[serde(rename = "headerValueSecret")]
-        header_value_secret: String,
-    },
-    #[serde(rename = "basicAuth")]
-    BasicAuth {
-        #[serde(rename = "usernameSecret")]
-        username_secret: String,
-        #[serde(rename = "passwordSecret")]
-        password_secret: String,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -417,31 +403,10 @@ pub struct HttpRequestConfig {
 pub enum HttpAuthConfig {
     #[serde(rename = "none")]
     None,
-    #[serde(rename = "headerAuth")]
-    HeaderAuth {
-        #[serde(rename = "headerName")]
-        header_name: String,
-        #[serde(rename = "valueSecret")]
-        value_secret: String,
-    },
-    #[serde(rename = "basicAuth")]
-    BasicAuth {
-        #[serde(rename = "usernameSecret")]
-        username_secret: String,
-        #[serde(rename = "passwordSecret")]
-        password_secret: String,
-    },
     #[serde(rename = "bearerToken")]
     BearerToken {
         #[serde(rename = "tokenSecret")]
         token_secret: String,
-    },
-    #[serde(rename = "queryAuth")]
-    QueryAuth {
-        #[serde(rename = "paramName")]
-        param_name: String,
-        #[serde(rename = "valueSecret")]
-        value_secret: String,
     },
 }
 

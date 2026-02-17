@@ -26,17 +26,24 @@ fn test_cron_trigger_roundtrip() {
 #[test]
 fn test_http_trigger_roundtrip() {
     let trigger = TriggerDef::Http(HttpTriggerDef {
-        path: ValueExpr::string("/webhook/process"),
-        methods: vec!["POST".into(), "PUT".into()],
+        authorized_keys: vec!["0xABCDEF1234567890".into()],
     });
     let rt = roundtrip(&trigger);
     if let TriggerDef::Http(http) = &rt {
-        if let ValueExpr::Literal(LiteralValue::String { value }) = &http.path {
-            assert_eq!(value, "/webhook/process");
-        } else {
-            panic!("Expected string path");
-        }
-        assert_eq!(http.methods, vec!["POST", "PUT"]);
+        assert_eq!(http.authorized_keys, vec!["0xABCDEF1234567890"]);
+    } else {
+        panic!("Expected Http trigger");
+    }
+}
+
+#[test]
+fn test_http_trigger_empty_keys_roundtrip() {
+    let trigger = TriggerDef::Http(HttpTriggerDef {
+        authorized_keys: vec![],
+    });
+    let rt = roundtrip(&trigger);
+    if let TriggerDef::Http(http) = &rt {
+        assert!(http.authorized_keys.is_empty());
     } else {
         panic!("Expected Http trigger");
     }

@@ -58,11 +58,15 @@ fn lower_cron_trigger(
 }
 
 fn lower_http_trigger(config: &HttpTriggerConfig) -> Result<TriggerResult, Vec<CompilerError>> {
-    let path = config.path.as_deref().map(|p| ValueExpr::string(p)).unwrap_or(ValueExpr::string("/"));
-    let methods = vec![config.http_method.clone()];
+    let authorized_keys = match &config.authentication {
+        crate::parse::types::WebhookAuth::EvmSignature { authorized_addresses } => {
+            authorized_addresses.clone()
+        }
+        _ => vec![], // No CRE-level auth for non-EVM auth types
+    };
 
     Ok(TriggerResult {
-        trigger_def: TriggerDef::Http(HttpTriggerDef { path, methods }),
+        trigger_def: TriggerDef::Http(HttpTriggerDef { authorized_keys }),
         trigger_param: TriggerParam::HttpRequest,
         evm_chain_for_trigger: None,
     })

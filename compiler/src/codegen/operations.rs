@@ -3,22 +3,71 @@
 //! Each function emits the TypeScript code for one operation variant.
 //! Branch/Merge/Filter are handled at the handler level, not here.
 
+use std::collections::HashMap;
+
 use crate::ir::types::*;
+use super::fetch_fns::FetchContext;
 use super::value_expr::emit_value_expr;
 use super::writer::CodeWriter;
 
 /// Emit an HttpRequest call in the handler body.
 /// The fetch function is emitted separately by `fetch_fns.rs`.
-pub fn emit_http_request(step: &Step, op: &HttpRequestOp, w: &mut CodeWriter) {
+/// `fetch_contexts` provides dynamic ref info for building augmented config.
+pub fn emit_http_request(
+    step: &Step,
+    op: &HttpRequestOp,
+    fetch_contexts: &HashMap<String, FetchContext>,
+    w: &mut CodeWriter,
+) {
     let fetch_fn_name = format!("fetch_{}", step.id.replace('-', "_"));
     let consensus_expr = emit_consensus(&op.consensus);
 
     if let Some(ref out) = step.output {
         w.line(&format!("// {}", step.label));
-        w.line(&format!(
-            "const {} = httpClient.sendRequest(runtime, {}, {})(runtime.config).result();",
-            out.variable_name, fetch_fn_name, consensus_expr
-        ));
+
+        let ctx = fetch_contexts.get(&step.id);
+        let has_dynamic = ctx.map_or(false, |c| !c.dynamic_refs.is_empty());
+        let has_auth = ctx.map_or(false, |c| c.has_auth);
+
+        if has_dynamic || has_auth {
+            // Fetch the auth secret if needed
+            if let Some(ref auth) = op.authentication {
+                let secret_var = format!("_authSecret_{}", step.id.replace('-', "_"));
+                w.line(&format!(
+                    "const {} = runtime.getSecret({{ id: \"{}\" }}).result();",
+                    secret_var, auth.token_secret,
+                ));
+            }
+
+            // Build augmented config
+            let cfg_var = format!("_fetchCfg_{}", step.id.replace('-', "_"));
+            w.block_open(&format!("const {} =", cfg_var));
+            w.line("...runtime.config,");
+            if op.authentication.is_some() {
+                let secret_var = format!("_authSecret_{}", step.id.replace('-', "_"));
+                w.line(&format!("_authToken: {}.value,", secret_var));
+            }
+            if let Some(c) = ctx {
+                for dyn_ref in &c.dynamic_refs {
+                    w.line(&format!(
+                        "{}: {},",
+                        dyn_ref.config_key,
+                        emit_value_expr(&dyn_ref.handler_expr),
+                    ));
+                }
+            }
+            w.dedent();
+            w.line("};");
+            w.line(&format!(
+                "const {} = httpClient.sendRequest(runtime, {}, {})({}).result();",
+                out.variable_name, fetch_fn_name, consensus_expr, cfg_var,
+            ));
+        } else {
+            w.line(&format!(
+                "const {} = httpClient.sendRequest(runtime, {}, {})(runtime.config).result();",
+                out.variable_name, fetch_fn_name, consensus_expr
+            ));
+        }
     }
 }
 
@@ -46,7 +95,12 @@ pub fn emit_evm_read(step: &Step, op: &EvmReadOp, w: &mut CodeWriter) {
         w.indent();
         w.line(&format!("contractAddress: {},", contract));
         w.line(&format!("functionName: \"{}\",", op.function_name));
-        w.line(&format!("abi: parseAbi([\"{}\"]),", abi));
+        // Wrap in array if not already one (single ABI item → [item])
+        if abi.starts_with('[') {
+            w.line(&format!("abi: {},", abi));
+        } else {
+            w.line(&format!("abi: [{}],", abi));
+        }
         if !op.args.is_empty() {
             w.line(&format!("args: [{}],", op.args.iter().map(|a| emit_value_expr(&a.value)).collect::<Vec<_>>().join(", ")));
         }
@@ -123,10 +177,17 @@ pub fn emit_code_node(step: &Step, op: &CodeNodeOp, w: &mut CodeWriter) {
 pub fn emit_json_parse(step: &Step, op: &JsonParseOp, w: &mut CodeWriter) {
     w.line(&format!("// {}", step.label));
     let input = emit_value_expr(&op.input);
-    let parse_expr = format!(
-        "JSON.parse(Buffer.from({}, \"base64\").toString(\"utf-8\"))",
-        input
-    );
+
+    let parse_expr = if matches!(&op.input, ValueExpr::TriggerDataRef { .. }) {
+        // Trigger input is Uint8Array — decode directly
+        format!("JSON.parse(new TextDecoder().decode({}))", input)
+    } else {
+        // HTTP response body is base64-encoded
+        format!(
+            "JSON.parse(Buffer.from({}, \"base64\").toString(\"utf-8\"))",
+            input
+        )
+    };
 
     let final_expr = if let Some(ref path) = op.source_path {
         format!("{}{}", parse_expr, path)
@@ -151,11 +212,16 @@ pub fn emit_abi_encode(step: &Step, op: &AbiEncodeOp, w: &mut CodeWriter) {
     if let Some(ref out) = step.output {
         w.line(&format!("const {} = {{", out.variable_name));
         w.indent();
-        w.line(&format!(
-            "encoded: encodeFunctionData({{",
-        ));
+        w.line("encoded: encodeFunctionData({");
         w.indent();
-        w.line(&format!("abi: {},", op.abi_params_json));
+        if let Some(ref fn_name) = op.function_name {
+            // Convenience node: full function ABI with functionName
+            w.line(&format!("abi: [{}],", op.abi_json));
+            w.line(&format!("functionName: \"{}\",", fn_name));
+        } else {
+            // Standalone: parameter-only ABI
+            w.line(&format!("abi: {},", op.abi_json));
+        }
         w.line(&format!("args: [{}],", args.join(", ")));
         w.dedent();
         w.line("}),");
@@ -182,7 +248,7 @@ pub fn emit_abi_decode(step: &Step, op: &AbiDecodeOp, w: &mut CodeWriter) {
             ));
         }
         w.indent();
-        w.line(&format!("abi: {},", op.abi_params_json));
+        w.line(&format!("abi: {},", op.abi_json));
         w.line(&format!("data: {},", input));
         w.dedent();
         w.line("});");

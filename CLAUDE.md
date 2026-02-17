@@ -47,7 +47,7 @@ Starting at the root of project
 ```bash
 bun shared/sample/generate_fixtures.ts
 cd compiler && cargo test
-cd ../cre-test && bun load-output.mjs --filename {filename.json} && cre workflow simulate cre-testing-workflow --target staging-settings
+cd ../cre-test && bun load-output.mjs && cre workflow simulate cre-testing-workflow --target staging-settings
 ```
 
 # Compiler

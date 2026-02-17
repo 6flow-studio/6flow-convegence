@@ -15,6 +15,7 @@ pub struct ImportSet {
     pub consensus_by_fields: bool,
     pub ok_fn: bool,
     pub cron_trigger_type: bool,
+    pub http_payload_type: bool,
     pub evm_log_type: bool,
     pub get_network: bool,
     pub bytes_to_hex: bool,
@@ -44,6 +45,7 @@ pub fn collect_imports(ir: &WorkflowIR) -> ImportSet {
     // Trigger-specific
     match &ir.trigger_param {
         TriggerParam::CronTrigger => imports.cron_trigger_type = true,
+        TriggerParam::HttpRequest => imports.http_payload_type = true,
         TriggerParam::EvmLog => {
             imports.evm_log_type = true;
             imports.get_network = true;
@@ -51,7 +53,6 @@ pub fn collect_imports(ir: &WorkflowIR) -> ImportSet {
             imports.keccak256 = true;
             imports.to_hex = true;
             imports.decode_event_log = true;
-            imports.parse_abi = true;
         }
         _ => {}
     }
@@ -95,11 +96,9 @@ fn scan_operation(op: &Operation, imports: &mut ImportSet) {
         }
         Operation::AbiEncode(_) => {
             imports.encode_function_data = true;
-            imports.parse_abi = true;
         }
         Operation::AbiDecode(_) => {
             imports.decode_function_result = true;
-            imports.parse_abi = true;
         }
         Operation::Branch(branch) => {
             scan_block(&branch.true_branch, imports);
@@ -138,6 +137,9 @@ pub fn emit_imports(imports: &ImportSet, w: &mut CodeWriter) {
     }
     if imports.cron_trigger_type {
         sdk_types.push("type CronTrigger");
+    }
+    if imports.http_payload_type {
+        sdk_types.push("type HTTPPayload");
     }
     if imports.evm_log_type {
         sdk_types.push("EVMLog");
