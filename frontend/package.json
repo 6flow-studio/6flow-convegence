@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@6flow/shared": "file:../shared",
+    "@anthropic-ai/sdk": "^0.76.0",
     "@auth/core": "^0.37.4",
     "@codemirror/autocomplete": "^6.20.0",
     "@codemirror/commands": "^6.10.2",

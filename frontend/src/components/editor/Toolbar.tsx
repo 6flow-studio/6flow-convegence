@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type {
   Workflow as SharedWorkflow,
   WorkflowEdge as SharedWorkflowEdge,
@@ -13,6 +14,7 @@ import {
   Loader2,
   Play,
   SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import type { CompilerActionStatus } from "@/lib/compiler/compiler-types";
 import { useEditorStore } from "@/lib/editor-store";
 import { fromReactFlowNodes } from "@/lib/workflow-convert";
+import { askClaude } from "@/services/claude";
 
 interface ToolbarProps {
   saveStatus: "idle" | "saving" | "saved";
@@ -50,6 +53,7 @@ export function Toolbar({
   const edges = useEditorStore((s) => s.edges);
   const workflowGlobalConfig = useEditorStore((s) => s.workflowGlobalConfig);
   const setWorkflowName = useEditorStore((s) => s.setWorkflowName);
+  const [reviewing, setReviewing] = useState(false);
   const isBusy = validationStatus === "running" || compileStatus === "running";
   const validateLabel =
     validationStatus === "running" ? "Validating..." : "Validate";
@@ -92,6 +96,50 @@ export function Toolbar({
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const handleReviewByAI = async () => {
+    setReviewing(true);
+    try {
+      const timestampIso = new Date().toISOString();
+      const exportedEdges: SharedWorkflowEdge[] = edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        ...(edge.sourceHandle ? { sourceHandle: edge.sourceHandle } : {}),
+        ...(edge.targetHandle ? { targetHandle: edge.targetHandle } : {}),
+      }));
+
+      const workflowJson: SharedWorkflow = {
+        id: workflowId ?? `workflow-${Date.now()}`,
+        name: workflowName.trim() || "Untitled Workflow",
+        version: "1.0.0",
+        nodes: fromReactFlowNodes(nodes),
+        edges: exportedEdges,
+        globalConfig: workflowGlobalConfig,
+        createdAt: timestampIso,
+        updatedAt: timestampIso,
+      };
+
+      const prompt = `Please review the following 6Flow workflow JSON and provide feedback on:
+1. **Structural issues** — missing connections, orphan nodes, incorrect edge wiring
+2. **Configuration problems** — missing required fields, invalid values
+3. **Security concerns** — exposed secrets, unsafe patterns
+4. **CRE resource budget** — HTTP/EVM read/write counts vs limits
+5. **Optimization opportunities** — redundant nodes, simpler alternatives
+
+Workflow JSON:
+\`\`\`json
+${JSON.stringify(workflowJson, null, 2)}
+\`\`\``;
+
+      const response = await askClaude(prompt);
+      console.log("[Review by AI]", response);
+    } catch (err) {
+      console.error("[Review by AI] failed:", err);
+    } finally {
+      setReviewing(false);
+    }
   };
 
   return (
@@ -156,6 +204,21 @@ export function Toolbar({
         >
           <Download size={13} className="mr-1.5" />
           Export JSON
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-zinc-500 hover:text-zinc-300 hover:bg-surface-2 h-8 px-3 text-xs"
+          disabled={reviewing}
+          onClick={handleReviewByAI}
+        >
+          {reviewing ? (
+            <Loader2 size={13} className="mr-1.5 animate-spin" />
+          ) : (
+            <Sparkles size={13} className="mr-1.5" />
+          )}
+          {reviewing ? "Reviewing..." : "Review by AI"}
         </Button>
 
         <Button
