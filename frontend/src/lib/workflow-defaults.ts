@@ -6,6 +6,7 @@ export const DEFAULT_WORKFLOW_GLOBAL_CONFIG: GlobalConfig = {
   isTestnet: true,
   defaultChainSelector: "ethereum-testnet-sepolia",
   secrets: [],
+  rpcs: [],
 };
 
 export function cloneGlobalConfig(config: GlobalConfig): GlobalConfig {
@@ -15,6 +16,10 @@ export function cloneGlobalConfig(config: GlobalConfig): GlobalConfig {
     secrets: config.secrets.map((secret) => ({
       name: secret.name,
       envVariable: secret.envVariable,
+    })),
+    rpcs: config.rpcs.map((rpc) => ({
+      chainName: rpc.chainName,
+      url: rpc.url,
     })),
   };
 }

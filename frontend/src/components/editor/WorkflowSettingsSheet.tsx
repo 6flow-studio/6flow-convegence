@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import type { GlobalConfig, SecretReference } from "@6flow/shared/model/node";
+import type {
+  GlobalConfig,
+  RpcEntry,
+  SecretReference,
+} from "@6flow/shared/model/node";
 import {
   Sheet,
   SheetContent,
@@ -33,6 +37,13 @@ function cloneSecrets(secrets: SecretReference[]): SecretReference[] {
   }));
 }
 
+function cloneRpcs(rpcs: RpcEntry[]): RpcEntry[] {
+  return rpcs.map((rpc) => ({
+    chainName: rpc.chainName,
+    url: rpc.url,
+  }));
+}
+
 export function WorkflowSettingsSheet({
   open,
   onOpenChange,
@@ -50,6 +61,7 @@ export function WorkflowSettingsSheet({
       isTestnet: value.isTestnet,
       defaultChainSelector: value.defaultChainSelector,
       secrets: cloneSecrets(value.secrets),
+      rpcs: cloneRpcs(value.rpcs),
     });
   }, [open, value]);
 
@@ -97,6 +109,7 @@ export function WorkflowSettingsSheet({
       isTestnet: draft.isTestnet,
       defaultChainSelector: draft.defaultChainSelector,
       secrets: normalizedSecrets,
+      rpcs: cloneRpcs(draft.rpcs),
     });
 
     onOpenChange(false);

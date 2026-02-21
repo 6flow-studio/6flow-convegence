@@ -10,6 +10,7 @@ import {
   DEFAULT_WORKFLOW_GLOBAL_CONFIG,
   cloneGlobalConfig,
 } from "./workflow-defaults";
+import { sanitizeGlobalConfig } from "./workflow-global-config";
 
 type SaveStatus = "idle" | "saving" | "saved";
 
@@ -61,8 +62,8 @@ export function useWorkflowPersistence(workflowId: string) {
 
     try {
       const parsedGlobalConfig = workflow.globalConfig
-        ? JSON.parse(workflow.globalConfig)
-        : DEFAULT_WORKFLOW_GLOBAL_CONFIG;
+        ? sanitizeGlobalConfig(JSON.parse(workflow.globalConfig))
+        : cloneGlobalConfig(DEFAULT_WORKFLOW_GLOBAL_CONFIG);
       store.setWorkflowGlobalConfig(parsedGlobalConfig);
     } catch {
       store.setWorkflowGlobalConfig(
