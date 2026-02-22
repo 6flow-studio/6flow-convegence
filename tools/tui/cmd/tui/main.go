@@ -46,6 +46,7 @@ type workflowItem struct {
 	id          string
 	title       string
 	description string
+	status      string
 }
 
 func (i workflowItem) Title() string       { return i.title }
@@ -123,6 +124,11 @@ type actionFinishedMsg struct {
 	logs []string
 }
 
+type syncLocalFinishedMsg struct {
+	logs []string
+	err  error
+}
+
 type model struct {
 	phase     appPhase
 	authState authState
@@ -180,7 +186,8 @@ func initialModel() model {
 	}
 
 	actions := []list.Item{
-		actionItem{id: "refresh", title: "Sync", description: "Fetch workflows from frontend API"},
+		actionItem{id: "refresh", title: "Sync list", description: "Fetch workflows from frontend API"},
+		actionItem{id: "sync-local", title: "Sync to local", description: "Download compiled zip to ~/.6flow/workflows"},
 		actionItem{id: "simulate", title: "Simulate", description: "Mock run for selected workflow"},
 		actionItem{id: "deploy", title: "Deploy", description: "Placeholder deploy flow"},
 		actionItem{id: "secrets", title: "Manage secrets", description: "Placeholder secret flow"},
@@ -262,6 +269,19 @@ func actionCmd(actionID, workflowID string) tea.Cmd {
 	}
 }
 
+func syncLocalCmd(baseURL, token, workflowID, workflowName string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := core.SyncWorkflowToLocal(baseURL, token, workflowID, workflowName)
+		if err != nil {
+			return syncLocalFinishedMsg{err: err}
+		}
+		return syncLocalFinishedMsg{
+			logs: result.Logs,
+			err:  nil,
+		}
+	}
+}
+
 func (m model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, initSessionCmd())
 }
@@ -292,6 +312,7 @@ func (m *model) setWorkflows(items []core.FrontendWorkflow) {
 			id:          item.ID,
 			title:       item.Name,
 			description: fmt.Sprintf("%s • %d nodes • %s", item.Status, item.NodeCount, updated),
+			status:      item.Status,
 		})
 		if item.ID == prev {
 			selected = idx
@@ -473,6 +494,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		return m, nil
 
+	case syncLocalFinishedMsg:
+		if msg.err != nil {
+			m.appendLog("Sync to local failed: " + msg.err.Error())
+			m.busy = false
+			return m, nil
+		}
+		for _, line := range msg.logs {
+			m.appendLog(line)
+		}
+		m.appendLog("Action \"Sync to local\" completed.")
+		m.busy = false
+		return m, nil
+
 	case tea.KeyMsg:
 		if key.Matches(msg, keys.Quit) {
 			return m, tea.Quit
@@ -556,6 +590,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.busy = true
 					m.appendLog("Refreshing workflows from frontend API...")
 					return m, refreshWorkflowsCmd(m.webBaseURL, m.token)
+				}
+
+				if action.id == "sync-local" {
+					workflow := m.selectedWorkflow()
+					if workflow == nil {
+						m.appendLog("Select a workflow first.")
+						return m, nil
+					}
+					if workflow.status != "ready" {
+						m.appendLog("Workflow is not compiled yet. Compile first before syncing.")
+						return m, nil
+					}
+					if strings.TrimSpace(m.token) == "" {
+						m.phase = phaseAuthGate
+						m.authState = authDisconnected
+						m.appendLog("No active session. Please log in first.")
+						return m, nil
+					}
+
+					m.busy = true
+					m.appendLog(fmt.Sprintf("Starting sync to local for %s...", workflow.title))
+					return m, syncLocalCmd(m.webBaseURL, m.token, workflow.id, workflow.title)
 				}
 
 				workflow := m.selectedWorkflow()
