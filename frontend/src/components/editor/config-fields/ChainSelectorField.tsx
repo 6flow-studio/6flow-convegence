@@ -1,4 +1,4 @@
-import { SUPPORTED_CHAINS } from "@6flow/shared/model/node";
+import { SUPPORTED_CHAINS } from "@6flow/shared/supportedChain";
 import { SelectField } from "./SelectField";
 
 interface ChainSelectorFieldProps {

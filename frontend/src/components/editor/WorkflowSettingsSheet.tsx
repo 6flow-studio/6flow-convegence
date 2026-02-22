@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  ChainSelectorField,
   FieldLabel,
   SelectField,
 } from "@/components/editor/config-fields";
@@ -59,7 +58,6 @@ export function WorkflowSettingsSheet({
 
     setDraft({
       isTestnet: value.isTestnet,
-      defaultChainSelector: value.defaultChainSelector,
       secrets: cloneSecrets(value.secrets),
       rpcs: cloneRpcs(value.rpcs),
     });
@@ -115,7 +113,6 @@ export function WorkflowSettingsSheet({
 
     onSave({
       isTestnet: draft.isTestnet,
-      defaultChainSelector: draft.defaultChainSelector,
       secrets: normalizedSecrets,
       rpcs: cloneRpcs(draft.rpcs),
     });
@@ -150,31 +147,12 @@ export function WorkflowSettingsSheet({
             ]}
           />
 
-          <ChainSelectorField
-            label="Chain"
-            description="The blockchain network to use for this workflow"
-            value={draft.defaultChainSelector}
-            isTestnet={draft.isTestnet}
-            onChange={(value) =>
-              setDraft((previous) => ({
-                ...previous,
-                defaultChainSelector: value,
-              }))
-            }
-          />
-
           <div className="space-y-2">
             <FieldLabel
               label="Secrets"
-              description="Secrets used by compiler validation and generated secrets.yaml"
+              description="Used in secrets.yaml as a key value to map between your CRE workflow and env key"
             />
             <div className="space-y-2">
-              {draft.secrets.length === 0 && (
-                <div className="text-[11px] text-zinc-600 border border-edge-dim rounded-md px-2.5 py-2">
-                  No secrets configured.
-                </div>
-              )}
-
               {draft.secrets.map((secret, index) => (
                 <div key={`secret-${index}`} className="space-y-1">
                   <div className="flex items-center gap-2">
