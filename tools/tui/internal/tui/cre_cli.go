@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -15,6 +16,11 @@ import (
 
 type SecretsCommandResult struct {
 	Logs []string
+}
+
+type CREWhoAmIResult struct {
+	Identity string
+	Raw      string
 }
 
 const (
@@ -36,6 +42,54 @@ type projectYAML map[string]projectTarget
 
 type secretsManifest struct {
 	SecretsNames map[string][]string `yaml:"secretsNames"`
+}
+
+var emailLinePattern = regexp.MustCompile(`(?i)Email:\s*([^\s|]+@[^\s|]+)`)
+
+func parseCREWhoAmIIdentity(output string) string {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return ""
+	}
+	if match := emailLinePattern.FindStringSubmatch(trimmed); len(match) > 1 {
+		return strings.TrimSpace(match[1])
+	}
+	for _, line := range strings.Split(trimmed, "\n") {
+		clean := strings.TrimSpace(strings.Trim(line, "│"))
+		if clean == "" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(clean), "email:") {
+			parts := strings.SplitN(clean, ":", 2)
+			if len(parts) == 2 {
+				val := strings.TrimSpace(parts[1])
+				if val != "" {
+					return val
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func GetCREWhoAmI() (*CREWhoAmIResult, error) {
+	cmd := exec.Command("cre", "whoami")
+	output, err := cmd.CombinedOutput()
+	raw := strings.TrimSpace(string(output))
+	if err != nil {
+		if raw == "" {
+			raw = err.Error()
+		}
+		return nil, errors.New(raw)
+	}
+	identity := parseCREWhoAmIIdentity(raw)
+	if identity == "" {
+		identity = "logged-in"
+	}
+	return &CREWhoAmIResult{
+		Identity: identity,
+		Raw:      raw,
+	}, nil
 }
 
 func localWorkflowProjectRoot(workflowID, workflowName string) string {
@@ -396,7 +450,9 @@ func InspectLocalSecrets(workflowID, workflowName, target string) (*SecretsComma
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range preflightLogs { appendLog(l) }
+	for _, l := range preflightLogs {
+		appendLog(l)
+	}
 
 	manifest, err := loadSecretsManifest(secretsYamlPath)
 	if err != nil {
@@ -409,7 +465,9 @@ func InspectLocalSecrets(workflowID, workflowName, target string) (*SecretsComma
 	}
 
 	ids := make([]string, 0, len(manifest.SecretsNames))
-	for id := range manifest.SecretsNames { ids = append(ids, id) }
+	for id := range manifest.SecretsNames {
+		ids = append(ids, id)
+	}
 	sort.Strings(ids)
 
 	appendLog("Declared secrets:")
@@ -447,7 +505,9 @@ func upsertLocalSecret(workflowID, workflowName, target, secretID, secretValue s
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range preflightLogs { appendLog(l) }
+	for _, l := range preflightLogs {
+		appendLog(l)
+	}
 
 	id := normalizeSecretID(secretID)
 	if id == "" {
@@ -495,7 +555,9 @@ func DeleteLocalSecret(workflowID, workflowName, target, secretID string) (*Secr
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range preflightLogs { appendLog(l) }
+	for _, l := range preflightLogs {
+		appendLog(l)
+	}
 
 	id := normalizeSecretID(secretID)
 	if id == "" {

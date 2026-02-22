@@ -30,6 +30,8 @@ const (
 	phaseReady        appPhase = "ready"
 )
 
+const workflowSyncListItemID = "__sync_list__"
+
 const (
 	focusWorkflows focusPane = iota
 	focusActions
@@ -130,6 +132,12 @@ type syncLocalFinishedMsg struct {
 	err  error
 }
 
+type creWhoAmIFinishedMsg struct {
+	identity string
+	raw      string
+	err      error
+}
+
 type secretsCmdFinishedMsg struct {
 	logs  []string
 	label string
@@ -141,10 +149,13 @@ type model struct {
 	authState authState
 	token     string
 
-	busy       bool
-	lastSyncAt string
-	user       string
-	webBaseURL string
+	busy          bool
+	lastSyncAt    string
+	user          string
+	webBaseURL    string
+	workflowCount int
+	creLoggedIn   bool
+	creIdentity   string
 
 	width  int
 	height int
@@ -211,11 +222,9 @@ func initialModel() model {
 	}
 
 	actions := []list.Item{
-		actionItem{id: "refresh", title: "Sync list", description: "Fetch workflows from frontend API"},
-		actionItem{id: "sync-local", title: "Sync to local", description: "Download compiled zip to ~/.6flow/workflows"},
 		actionItem{id: "simulate", title: "Simulate", description: "Mock run for selected workflow"},
-		actionItem{id: "deploy", title: "Deploy", description: "Placeholder deploy flow"},
 		actionItem{id: "secrets", title: "Secrets", description: "Open secrets submenu (setup/read/create/update/delete)"},
+		actionItem{id: "deploy", title: "Deploy (CI unavailable)", description: "Not available in current CI version"},
 	}
 	secretsActions := []list.Item{
 		actionItem{id: "setup-secrets-env", title: "Setup secrets env", description: "Set private key + RPC URL locally"},
@@ -280,6 +289,7 @@ func initialModel() model {
 		logs: []string{
 			withTimestamp(fmt.Sprintf("Frontend API mode enabled (%s).", base)),
 			withTimestamp("Checking local authentication session..."),
+			withTimestamp("Checking CRE CLI identity (`cre whoami`) ..."),
 		},
 	}
 }
@@ -321,9 +331,9 @@ func actionCmd(actionID, workflowID string) tea.Cmd {
 			logs = append(logs, "Simulation finished (placeholder): no process was executed.")
 		case "deploy":
 			time.Sleep(300 * time.Millisecond)
-			logs = append(logs, "Deploy flow is placeholder-only in this iteration.")
+			logs = append(logs, "Deploy is not available in the current CI version.")
 			time.Sleep(250 * time.Millisecond)
-			logs = append(logs, "Next phase: hook this action to CRE deploy API.")
+			logs = append(logs, "Use local simulation/sync flows for now.")
 		}
 		return actionFinishedMsg{logs: logs}
 	}
@@ -338,6 +348,20 @@ func syncLocalCmd(baseURL, token, workflowID, workflowName string) tea.Cmd {
 		return syncLocalFinishedMsg{
 			logs: result.Logs,
 			err:  nil,
+		}
+	}
+}
+
+func creWhoAmICmd() tea.Cmd {
+	return func() tea.Msg {
+		result, err := core.GetCREWhoAmI()
+		if err != nil {
+			return creWhoAmIFinishedMsg{err: err}
+		}
+		return creWhoAmIFinishedMsg{
+			identity: result.Identity,
+			raw:      result.Raw,
+			err:      nil,
 		}
 	}
 }
@@ -401,7 +425,7 @@ func saveSecretsSetupCmd(workflowID, workflowName, target, privateKey, rpcURL st
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, initSessionCmd())
+	return tea.Batch(m.spinner.Tick, initSessionCmd(), creWhoAmICmd())
 }
 
 func wrapLine(input string, width int) []string {
@@ -453,7 +477,7 @@ func (m *model) setWorkflows(items []core.FrontendWorkflow) {
 		prev = current.id
 	}
 
-	listItems := make([]list.Item, 0, len(items))
+	listItems := make([]list.Item, 0, len(items)+1)
 	selected := 0
 	for idx, item := range items {
 		updated := "-"
@@ -470,8 +494,16 @@ func (m *model) setWorkflows(items []core.FrontendWorkflow) {
 			selected = idx
 		}
 	}
+	listItems = append(listItems, workflowItem{
+		id:          workflowSyncListItemID,
+		title:       "🔄 Sync list",
+		description: "Refresh workflow list from frontend API",
+		status:      "meta",
+	})
 
 	m.workflowList.SetItems(listItems)
+	m.workflowCount = len(items)
+	m.workflowList.Title = "Workflows (Enter: sync selected, choose 'Sync list' to refresh)"
 	if len(listItems) > 0 {
 		m.workflowList.Select(selected)
 	}
@@ -548,6 +580,9 @@ func (m model) selectedWorkflow() *workflowItem {
 	if !ok {
 		return nil
 	}
+	if item.id == workflowSyncListItemID {
+		return nil
+	}
 	return &item
 }
 
@@ -557,6 +592,25 @@ func (m model) selectedAction() *actionItem {
 		return nil
 	}
 	return &item
+}
+
+func compactIdentity(identity string) string {
+	trimmed := strings.TrimSpace(identity)
+	if trimmed == "" {
+		return "unknown"
+	}
+	if len(trimmed) <= 24 {
+		return trimmed
+	}
+	return trimmed[:21] + "..."
+}
+
+func (m *model) guardCRELoggedIn() bool {
+	if m.creLoggedIn {
+		return true
+	}
+	m.appendLog("CRE CLI login required. Run `cre auth login` first, then use Sync list.")
+	return false
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -625,6 +679,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendLog(fmt.Sprintf("Fetched %d workflow(s) from frontend API.", len(msg.workflows)))
 		return m, nil
 
+	case creWhoAmIFinishedMsg:
+		if msg.err != nil {
+			m.creLoggedIn = false
+			m.creIdentity = ""
+			m.appendLog("CRE CLI not logged in. Run `cre auth login` to use workflow/actions.")
+			m.appendLog("CRE whoami: " + msg.err.Error())
+			return m, nil
+		}
+		m.creLoggedIn = true
+		m.creIdentity = compactIdentity(msg.identity)
+		if strings.TrimSpace(msg.raw) != "" {
+			m.appendLog("CRE CLI logged in as " + msg.identity)
+		}
+		return m, nil
+
 	case loginFinishedMsg:
 		if msg.err != nil {
 			m.phase = phaseAuthGate
@@ -653,7 +722,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.appendLog("Authentication completed. Loading workflows...")
 		m.appendLog("Loading workflows from frontend API...")
-		return m, refreshWorkflowsCmd(m.webBaseURL, m.token)
+		return m, tea.Batch(refreshWorkflowsCmd(m.webBaseURL, m.token), creWhoAmICmd())
 
 	case actionFinishedMsg:
 		for _, line := range msg.logs {
@@ -952,6 +1021,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.focus == focusWorkflows {
+			if key.Matches(msg, keys.Run) {
+				if m.busy {
+					return m, nil
+				}
+				item, ok := m.workflowList.SelectedItem().(workflowItem)
+				if !ok {
+					return m, nil
+				}
+				if item.id == workflowSyncListItemID {
+					if strings.TrimSpace(m.token) == "" {
+						m.phase = phaseAuthGate
+						m.authState = authDisconnected
+						m.appendLog("No active session. Please log in first.")
+						return m, nil
+					}
+					m.busy = true
+					m.appendLog("Refreshing workflows from frontend API...")
+					return m, tea.Batch(refreshWorkflowsCmd(m.webBaseURL, m.token), creWhoAmICmd())
+				}
+				if !m.guardCRELoggedIn() {
+					return m, creWhoAmICmd()
+				}
+				if strings.TrimSpace(m.token) == "" {
+					m.phase = phaseAuthGate
+					m.authState = authDisconnected
+					m.appendLog("No active session. Please log in first.")
+					return m, nil
+				}
+				if item.status != "ready" {
+					m.appendLog("Workflow is not compiled yet. Compile first before syncing.")
+					return m, nil
+				}
+				m.busy = true
+				m.appendLog(fmt.Sprintf("Starting sync to local for %s...", item.title))
+				return m, syncLocalCmd(m.webBaseURL, m.token, item.id, item.title)
+			}
+
 			var cmd tea.Cmd
 			m.workflowList, cmd = m.workflowList.Update(msg)
 			cmds = append(cmds, cmd)
@@ -967,40 +1073,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if action == nil {
 					return m, nil
 				}
-				if action.id == "refresh" {
-					if strings.TrimSpace(m.token) == "" {
-						m.phase = phaseAuthGate
-						m.authState = authDisconnected
-						m.appendLog("No active session. Please log in first.")
-						return m, nil
-					}
-					m.busy = true
-					m.appendLog("Refreshing workflows from frontend API...")
-					return m, refreshWorkflowsCmd(m.webBaseURL, m.token)
+				if !m.guardCRELoggedIn() {
+					return m, creWhoAmICmd()
 				}
-
-				if action.id == "sync-local" {
-					workflow := m.selectedWorkflow()
-					if workflow == nil {
-						m.appendLog("Select a workflow first.")
-						return m, nil
-					}
-					if workflow.status != "ready" {
-						m.appendLog("Workflow is not compiled yet. Compile first before syncing.")
-						return m, nil
-					}
-					if strings.TrimSpace(m.token) == "" {
-						m.phase = phaseAuthGate
-						m.authState = authDisconnected
-						m.appendLog("No active session. Please log in first.")
-						return m, nil
-					}
-
-					m.busy = true
-					m.appendLog(fmt.Sprintf("Starting sync to local for %s...", workflow.title))
-					return m, syncLocalCmd(m.webBaseURL, m.token, workflow.id, workflow.title)
-				}
-
 				if action.id == "secrets" {
 					workflow := m.selectedWorkflow()
 					if workflow == nil {
@@ -1049,10 +1124,26 @@ func (m model) headerView() string {
 	if m.busy {
 		state += " • busy"
 	}
+	creState := "login-required"
+	if m.creLoggedIn {
+		creState = "connected:" + m.creIdentity
+	}
 	head := lipgloss.NewStyle().Bold(true).Render("6FLOW TUI")
-	sub := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		fmt.Sprintf("user=%s  mode=frontend-api  auth=%s  workflows=%d  secrets_mode=staging-only (%s)  last_sync=%s", m.user, state, len(m.workflowList.Items()), m.currentSecretsTarget(), m.lastSyncAt),
+	subText := fmt.Sprintf(
+		"user=%s  mode=frontend-api  auth=%s  cre=%s  workflows=%d  secrets_mode=staging-only (%s)  last_sync=%s",
+		m.user,
+		state,
+		creState,
+		m.workflowCount,
+		m.currentSecretsTarget(),
+		m.lastSyncAt,
 	)
+	wrapWidth := m.width - 2
+	if wrapWidth < 40 {
+		wrapWidth = 40
+	}
+	subLines := wrapLine(subText, wrapWidth)
+	sub := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(strings.Join(subLines, "\n"))
 	return lipgloss.JoinVertical(lipgloss.Left, head, sub)
 }
 
