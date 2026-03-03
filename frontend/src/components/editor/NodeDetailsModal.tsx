@@ -427,6 +427,15 @@ function UpstreamPreview({ node }: { node: WorkflowNode }) {
         />
       );
     }
+    if (schema) {
+      return (
+        <div className="space-y-3">
+          <CollapsibleSection label="Output Schema" defaultOpen>
+            <SchemaTree schema={schema} upstreamNodeId={node.id} upstreamNodeName={node.data.label} />
+          </CollapsibleSection>
+        </div>
+      );
+    }
     return (
       <EmptyState
         icon={<Clock size={20} className="text-amber-400/60" />}

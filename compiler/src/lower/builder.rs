@@ -17,6 +17,20 @@ const AUTO_RETURN_ID_PREFIX: &str = "auto-return";
 const AUTO_RETURN_LABEL: &str = "Auto Return";
 const AUTO_RETURN_MESSAGE: &str = "Workflow completed";
 
+fn sanitize_label(label: &str) -> String {
+    let s: String = label
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    if s.starts_with(|c: char| c.is_ascii_digit()) {
+        format!("_{}", s)
+    } else if s.is_empty() {
+        "node".to_string()
+    } else {
+        s
+    }
+}
+
 /// Build the handler body from a topo-sorted list of node IDs.
 pub fn build_handler_body(
     topo_order: &[String],
@@ -462,7 +476,9 @@ fn lower_node(
         WorkflowNode::HttpRequest(n) => lower_http_request(node_id, &n.data.config, id_map),
         WorkflowNode::EvmRead(n) => lower_evm_read(node_id, &n.data.config, id_map),
         WorkflowNode::EvmWrite(n) => lower_evm_write(node_id, &n.data.config, id_map),
-        WorkflowNode::CodeNode(n) => lower_code_node(node_id, &n.data.config, id_map),
+        WorkflowNode::CodeNode(n) => {
+            lower_code_node(node_id, &n.data.config, graph, node_map, id_map)
+        }
         WorkflowNode::JsonParse(n) => {
             lower_json_parse(node_id, &n.data.config, graph, node_map, id_map)
         }
@@ -672,9 +688,34 @@ fn lower_evm_write(
 fn lower_code_node(
     node_id: &str,
     config: &crate::parse::types::CodeNodeConfig,
+    graph: &WorkflowGraph,
+    node_map: &HashMap<&str, &WorkflowNode>,
     id_map: &HashMap<String, String>,
 ) -> (Operation, Option<OutputBinding>) {
-    let input_bindings: Vec<CodeInputBinding> = config
+    // Whole-object aliases: const NodeLabel = step_x;  (one per upstream non-trigger node)
+    let mut seen_aliases: HashSet<String> = HashSet::new();
+    let mut node_aliases: Vec<CodeInputBinding> = Vec::new();
+    for pred_id in graph.predecessors(node_id) {
+        let Some(pred_node) = node_map.get(pred_id) else {
+            continue;
+        };
+        if pred_node.is_trigger() {
+            continue;
+        }
+        let alias = sanitize_label(pred_node.label());
+        if seen_aliases.insert(alias.clone()) {
+            let step_id = id_map
+                .get(pred_id)
+                .cloned()
+                .unwrap_or_else(|| pred_id.to_string());
+            node_aliases.push(CodeInputBinding {
+                variable_name: alias,
+                value: ValueExpr::binding(step_id, ""),
+            });
+        }
+    }
+
+    let explicit_bindings: Vec<CodeInputBinding> = config
         .input_variables
         .iter()
         .map(|var| {
@@ -686,6 +727,9 @@ fn lower_code_node(
             }
         })
         .collect();
+
+    let input_bindings: Vec<CodeInputBinding> =
+        node_aliases.into_iter().chain(explicit_bindings).collect();
 
     let execution_mode = if config.execution_mode == "runOnceForEach" {
         CodeExecutionMode::RunOnceForEach

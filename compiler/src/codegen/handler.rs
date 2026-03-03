@@ -23,6 +23,15 @@ fn solidity_type_to_ts(sol_type: &str) -> &'static str {
 
 fn emit_evm_log_event_decode(trigger: &TriggerDef, w: &mut CodeWriter) {
     let TriggerDef::EvmLog(evm_trigger) = trigger else { return };
+
+    // Always declare log metadata (present on every EVMLog)
+    w.line("// EVM log metadata");
+    w.line("const blockNumber: bigint = log.blockNumber;");
+    w.line("const logIndex: number = log.index;");
+    w.line("const transactionHash: string = bytesToHex(log.blockHash);");
+    w.blank();
+
+    // Decode event ABI args only when the event has input parameters
     let Ok(abi_val) = serde_json::from_str::<serde_json::Value>(&evm_trigger.event_abi_json) else { return };
     let Some(inputs) = abi_val.get("inputs").and_then(|v| v.as_array()) else { return };
     if inputs.is_empty() { return; }

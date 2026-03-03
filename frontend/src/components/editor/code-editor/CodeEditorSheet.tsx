@@ -21,7 +21,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { SelectField, TagInput } from "../config-fields";
+import { SelectField } from "../config-fields";
 import { editorTheme, editorHighlighting } from "./codemirror-theme";
 import { buildVariableCompletions } from "./variable-completions";
 import { useScopedVariables } from "@/hooks/useScopedVariables";
@@ -36,8 +36,6 @@ interface CodeEditorSheetProps {
   onLanguageChange: (language: string) => void;
   executionMode: CodeExecutionMode;
   onExecutionModeChange: (mode: CodeExecutionMode) => void;
-  inputVariables: string[];
-  onInputVariablesChange: (vars: string[]) => void;
 }
 
 export function CodeEditorSheet({
@@ -49,8 +47,6 @@ export function CodeEditorSheet({
   onLanguageChange,
   executionMode,
   onExecutionModeChange,
-  inputVariables,
-  onInputVariablesChange,
 }: CodeEditorSheetProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -202,16 +198,6 @@ export function CodeEditorSheet({
 
         {/* Editor */}
         <div ref={editorContainerRef} className="flex-1 overflow-auto" />
-
-        {/* Footer: Input Variables */}
-        <div className="px-4 py-2.5 border-t border-edge-dim">
-          <TagInput
-            label="Input Variables"
-            value={inputVariables}
-            onChange={onInputVariablesChange}
-            placeholder="Type variable name and press Enter..."
-          />
-        </div>
       </SheetContent>
     </Sheet>
   );

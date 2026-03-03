@@ -1,6 +1,6 @@
 "use client";
 
-import { SelectField, TagInput, NumberField } from "../config-fields";
+import { SelectField, NumberField } from "../config-fields";
 import { CodeEditorField } from "../code-editor/CodeEditorField";
 import type { CodeNodeConfig, CodeExecutionMode } from "@6flow/shared/model/node";
 
@@ -38,17 +38,6 @@ export function CodeNodeConfigRenderer({ config, onChange }: Props) {
         onExecutionModeChange={(executionMode: CodeExecutionMode) =>
           onChange({ executionMode })
         }
-        inputVariables={config.inputVariables ?? []}
-        onInputVariablesChange={(inputVariables) =>
-          onChange({ inputVariables })
-        }
-      />
-
-      <TagInput
-        label="Input Variables"
-        value={config.inputVariables ?? []}
-        onChange={(inputVariables) => onChange({ inputVariables })}
-        placeholder="Type variable name..."
       />
 
       <NumberField
