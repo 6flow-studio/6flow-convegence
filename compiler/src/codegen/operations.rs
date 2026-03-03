@@ -231,19 +231,23 @@ pub fn emit_abi_encode(step: &Step, op: &AbiEncodeOp, w: &mut CodeWriter) {
     if let Some(ref out) = step.output {
         w.line(&format!("const {} = {{", out.variable_name));
         w.indent();
-        w.line("encoded: encodeFunctionData({");
-        w.indent();
         if let Some(ref fn_name) = op.function_name {
             // Convenience node: full function ABI with functionName
+            w.line("encoded: encodeFunctionData({");
+            w.indent();
             w.line(&format!("abi: [{}],", op.abi_json));
             w.line(&format!("functionName: \"{}\",", fn_name));
+            w.line(&format!("args: [{}],", args.join(", ")));
+            w.dedent();
+            w.line("}),");
         } else {
-            // Standalone: parameter-only ABI
-            w.line(&format!("abi: {},", op.abi_json));
+            // Standalone: parameter-only ABI encoding (no function selector)
+            w.line(&format!(
+                "encoded: encodeAbiParameters({}, [{}]),",
+                op.abi_json,
+                args.join(", ")
+            ));
         }
-        w.line(&format!("args: [{}],", args.join(", ")));
-        w.dedent();
-        w.line("}),");
         w.dedent();
         w.line("};");
     }

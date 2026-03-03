@@ -419,7 +419,7 @@ function UpstreamPreview({ node }: { node: WorkflowNode }) {
   const entry = getNodeEntry(node.data.nodeType);
   const isTrigger = entry?.category === "trigger";
 
-  if (!execution) {
+  if (!execution && !schema) {
     if (isTrigger) {
       return (
         <EmptyState
@@ -463,13 +463,17 @@ function UpstreamPreview({ node }: { node: WorkflowNode }) {
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection label="Normalized Output" defaultOpen>
-        <PreviewCode value={execution.normalized} />
-      </CollapsibleSection>
+      {execution && (
+        <CollapsibleSection label="Normalized Output" defaultOpen>
+          <PreviewCode value={execution.normalized} />
+        </CollapsibleSection>
+      )}
 
-      <CollapsibleSection label="Raw Output">
-        <PreviewCode value={execution.raw} />
-      </CollapsibleSection>
+      {execution && (
+        <CollapsibleSection label="Raw Output">
+          <PreviewCode value={execution.raw} />
+        </CollapsibleSection>
+      )}
     </div>
   );
 }

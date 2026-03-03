@@ -1,5 +1,5 @@
 import { cre, ok, consensusIdenticalAggregation, getNetwork, encodeCallMsg, Runner, type Runtime, type HTTPSendRequester, type CronTrigger } from "@chainlink/cre-sdk";
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { z } from "zod";
 
 const configSchema = z.object({
@@ -23,7 +23,7 @@ const fetch_getoffchainreserves_1 = (sendRequester: HTTPSendRequester, config: C
   return { statusCode: resp.statusCode, body: resp.body, headers: resp.headers };
 };
 
-const fetch_node_1772461505671_1 = (sendRequester: HTTPSendRequester, config: any, apiKey: string) => {
+const fetch_getriskscore_1 = (sendRequester: HTTPSendRequester, config: any, apiKey: string) => {
   const body = {
     system_instruction: {
       parts: [{ text: "You are a risk analyst. You will receive two numbers:\n- TotalSupply: total token supply, scaled to 18 decimal places (raw integer).\n- TotalReserveScaled: total reserved/collateral amount, scaled to 18 decimal places (raw integer).\n\nCompute coverage as: coverage = TotalReserveScaled / TotalSupply (both are same scale, so this is the reserve-to-supply ratio).\n\nApply this risk scale exactly:\n- If coverage >= 1.2: riskScore = 0\n- Else: riskScore = min(100, round(((1.2 - coverage) / 1.2) * 100))\n\nRespond with the risk score as structured JSON only, no other text or markdown.\n\nOutput format (valid JSON only):\n{\"riskScore\": <integer>}" }],
@@ -77,14 +77,19 @@ const onCronTrigger = (runtime: Runtime<Config>, triggerData: CronTrigger): stri
   }).result();
   runtime.log(`[getOnChainSupply] ${__stringify(step_getonchainsupply_3)}`);
   // getRiskScore
-  const _aiApiKey_node_1772461505671_1 = runtime.getSecret({ id: "GEMINI_KEY" }).result();
-  const _fetchCfg_node_1772461505671_1 = {
+  const _aiApiKey_getriskscore_1 = runtime.getSecret({ id: "GEMINI_KEY" }).result();
+  const _fetchCfg_getriskscore_1 = {
     ...runtime.config,
     _dyn0: step_getonchainsupply_3.value,
     _dyn1: step_getoffchainreserves_1.token,
   };
-  const step_node_1772461505671_1 = httpClient.sendRequest(runtime, fetch_node_1772461505671_1, consensusIdenticalAggregation())(_fetchCfg_node_1772461505671_1, _aiApiKey_node_1772461505671_1.value).result();
-  runtime.log(`[getRiskScore] ${__stringify(step_node_1772461505671_1)}`);
+  const step_getriskscore_1 = httpClient.sendRequest(runtime, fetch_getriskscore_1, consensusIdenticalAggregation())(_fetchCfg_getriskscore_1, _aiApiKey_getriskscore_1.value).result();
+  runtime.log(`[getRiskScore] ${__stringify(step_getriskscore_1)}`);
+  // ABI Encode
+  const step_node_1772523224998_2 = {
+    encoded: encodeAbiParameters([{"name":"totalMinted","type":"uint256","indexed":null,"components":null},{"name":"totalReserve","type":"uint256","indexed":null,"components":null},{"name":"riskScore","type":"address","indexed":null,"components":null}], [step_getonchainsupply_3.value, step_getoffchainreserves_1.totalToken, step_getriskscore_1.candidates[0][0].content.parts[0][0].text]),
+  };
+  runtime.log(`[ABI Encode] ${__stringify(step_node_1772523224998_2)}`);
   return "Workflow completed";
 };
 
