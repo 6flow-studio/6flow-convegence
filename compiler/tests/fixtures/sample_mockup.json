@@ -22,8 +22,8 @@
             "id": "getoffchainreserves_1",
             "type": "httpRequest",
             "position": {
-                "x": 502.8723545766883,
-                "y": 218.6257614787036
+                "x": 501.8148906363406,
+                "y": 213.33844177696471
             },
             "data": {
                 "label": "getOffChainReserves",
@@ -309,11 +309,11 @@
             }
         },
         {
-            "id": "node_1772461505671_1",
+            "id": "getriskscore_1",
             "type": "ai",
             "position": {
-                "x": 754.3685093534245,
-                "y": 281.7758258087044
+                "x": 771.0390604638048,
+                "y": 267.3422207047588
             },
             "data": {
                 "label": "getRiskScore",
@@ -451,6 +451,47 @@
                     "schemaSource": "declared"
                 }
             }
+        },
+        {
+            "id": "node_1772523224998_2",
+            "type": "abiEncode",
+            "position": {
+                "x": 1021.511604888773,
+                "y": 314.1638526366584
+            },
+            "data": {
+                "label": "ABI Encode",
+                "config": {
+                    "abiParams": [
+                        {
+                            "name": "totalMinted",
+                            "type": "uint256"
+                        },
+                        {
+                            "name": "totalReserve",
+                            "type": "uint256"
+                        },
+                        {
+                            "name": "riskScore",
+                            "type": "address"
+                        }
+                    ],
+                    "dataMapping": [
+                        {
+                            "paramName": "totalMinted",
+                            "source": "{{getonchainsupply_3.value}}"
+                        },
+                        {
+                            "paramName": "totalReserve",
+                            "source": "{{getoffchainreserves_1.totalToken}}"
+                        },
+                        {
+                            "paramName": "riskScore",
+                            "source": "{{getriskscore_1.candidates[0][0].content.parts[0][0].text}}"
+                        }
+                    ]
+                }
+            }
         }
     ],
     "edges": [
@@ -471,14 +512,35 @@
         {
             "id": "xy-edge__node_1772451941969_1output-node_1772461505671_1input",
             "source": "getoffchainreserves_1",
-            "target": "node_1772461505671_1",
+            "target": "getriskscore_1",
             "sourceHandle": "output",
             "targetHandle": "input"
         },
         {
             "id": "xy-edge__node_1772452114820_3output-node_1772461505671_1input",
             "source": "getonchainsupply_3",
-            "target": "node_1772461505671_1",
+            "target": "getriskscore_1",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+        },
+        {
+            "id": "xy-edge__getoffchainreserves_1output-node_1772523224998_2input",
+            "source": "getoffchainreserves_1",
+            "target": "node_1772523224998_2",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+        },
+        {
+            "id": "xy-edge__getonchainsupply_3output-node_1772523224998_2input",
+            "source": "getonchainsupply_3",
+            "target": "node_1772523224998_2",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+        },
+        {
+            "id": "xy-edge__getriskscore_1output-node_1772523224998_2input",
+            "source": "getriskscore_1",
+            "target": "node_1772523224998_2",
             "sourceHandle": "output",
             "targetHandle": "input"
         }
@@ -493,6 +555,6 @@
         ],
         "rpcs": []
     },
-    "createdAt": "2026-03-02T15:11:11.230Z",
-    "updatedAt": "2026-03-02T15:11:11.230Z"
+    "createdAt": "2026-03-03T07:53:32.259Z",
+    "updatedAt": "2026-03-03T07:53:32.259Z"
 }
