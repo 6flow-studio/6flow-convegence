@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   TextField,
   SelectField,
@@ -8,12 +9,14 @@ import {
 } from "../config-fields";
 import { ChainSelectorField } from "../config-fields/ChainSelectorField";
 import { AbiParamsEditor } from "../config-fields/AbiParamsEditor";
-import type { EvmLogTriggerConfig, AbiParameter } from "@6flow/shared/model/node";
+import { useEditorStore } from "@/lib/editor-store";
+import type { EvmLogTriggerConfig, AbiParameter, AbiEvent, DataSchema, DataSchemaField, DataSchemaType } from "@6flow/shared/model/node";
 
 interface Props {
   config: EvmLogTriggerConfig;
   onChange: (patch: Record<string, unknown>) => void;
   isTestnet?: boolean;
+  nodeId?: string;
 }
 
 const BLOCK_CONFIRMATION_OPTIONS = [
@@ -21,9 +24,51 @@ const BLOCK_CONFIRMATION_OPTIONS = [
   { value: "finalized", label: "Finalized" },
 ];
 
-export function EvmLogTriggerConfigRenderer({ config, onChange, isTestnet }: Props) {
+function mapAbiTypeToSchemaType(abiType: string): DataSchemaType {
+  if (abiType === "bool") return "boolean";
+  if (abiType.startsWith("uint") || abiType.startsWith("int")) return "string";
+  if (abiType === "string" || abiType === "address" || abiType.startsWith("bytes")) return "string";
+  if (abiType.includes("[")) return "array";
+  if (abiType === "tuple") return "object";
+  return "unknown";
+}
+
+function deriveEvmLogOutputSchema(eventAbi: AbiEvent): DataSchema {
+  const eventArgFields: DataSchemaField[] = eventAbi.inputs.map(param => ({
+    key: param.name,
+    path: `eventArgs.${param.name}`,
+    schema: { type: mapAbiTypeToSchemaType(param.type), path: `eventArgs.${param.name}` },
+  }));
+
+  return {
+    type: "object",
+    path: "",
+    fields: [
+      { key: "blockNumber", path: "blockNumber", schema: { type: "string", path: "blockNumber" } },
+      { key: "transactionHash", path: "transactionHash", schema: { type: "string", path: "transactionHash" } },
+      { key: "logIndex", path: "logIndex", schema: { type: "number", path: "logIndex" } },
+      {
+        key: "eventArgs",
+        path: "eventArgs",
+        schema: { type: "object", path: "eventArgs", fields: eventArgFields },
+      },
+    ],
+  };
+}
+
+export function EvmLogTriggerConfigRenderer({ config, onChange, isTestnet, nodeId }: Props) {
   const eventAbi = config.eventAbi ?? { type: "event" as const, name: "", inputs: [] };
   const topicFilters = config.topicFilters ?? {};
+
+  const updateNodeEditor = useEditorStore((s) => s.updateNodeEditor);
+
+  useEffect(() => {
+    if (!nodeId) return;
+    updateNodeEditor(nodeId, {
+      outputSchema: deriveEvmLogOutputSchema(eventAbi),
+      schemaSource: "declared",
+    });
+  }, [nodeId, eventAbi, updateNodeEditor]);
 
   return (
     <div className="space-y-3">

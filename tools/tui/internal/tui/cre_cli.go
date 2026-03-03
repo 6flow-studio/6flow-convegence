@@ -155,6 +155,21 @@ func runCommand(cwd string, name string, args ...string) ([]string, error) {
 	return lines, nil
 }
 
+func runCommandWithStdin(cwd string, stdinData string, name string, args ...string) ([]string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = cwd
+	cmd.Stdin = strings.NewReader(stdinData)
+	out, err := cmd.CombinedOutput()
+	lines := splitOutputLines(string(out))
+	if err != nil {
+		if len(lines) == 0 {
+			lines = []string{err.Error()}
+		}
+		return lines, err
+	}
+	return lines, nil
+}
+
 func localWorkflowProjectRoot(workflowID, workflowName string) string {
 	folderName := fmt.Sprintf("%s--%s", slugify(workflowName), workflowID)
 	return filepath.Join(workflowsRootDir(), folderName)
@@ -956,7 +971,111 @@ func DeleteLocalSecret(workflowID, workflowName, target, secretID string) (*Secr
 	return &SecretsCommandResult{Logs: logs}, nil
 }
 
-func RunWorkflowSimulateLocal(workflowID, workflowName, target string) (*SimulateCommandResult, error) {
+type PreSimulateResult struct {
+	Logs        []string
+	ProjectRoot string
+	CmdArgs     []string
+}
+
+func PreSimulateLocal(workflowID, workflowName, target string) (*PreSimulateResult, error) {
+	logs := []string{}
+	appendLog := func(msg string) { logs = append(logs, msg) }
+
+	projectRoot := localWorkflowProjectRoot(workflowID, workflowName)
+	workflowDirName := slugify(workflowName)
+	workflowDir := filepath.Join(projectRoot, workflowDirName)
+	workflowYamlPath := filepath.Join(workflowDir, "workflow.yaml")
+	secretsYamlPath := filepath.Join(projectRoot, "secrets.yaml")
+	dotEnvPath := filepath.Join(workflowDir, ".env")
+	packageJSONPath := filepath.Join(workflowDir, "package.json")
+
+	if _, err := os.Stat(projectRoot); err != nil {
+		if os.IsNotExist(err) {
+			return &PreSimulateResult{Logs: logs}, errors.New("local workflow project not found. Run sync to local first")
+		}
+		return &PreSimulateResult{Logs: logs}, err
+	}
+	if _, err := os.Stat(workflowDir); err != nil {
+		return &PreSimulateResult{Logs: logs}, errors.New("workflow directory not found in local sync. Run sync to local again")
+	}
+	if _, err := os.Stat(packageJSONPath); err != nil {
+		return &PreSimulateResult{Logs: logs}, errors.New("missing workflow package.json. Run sync to local again")
+	}
+	if _, err := os.Stat(secretsYamlPath); err != nil {
+		return &PreSimulateResult{Logs: logs}, errors.New("missing secrets.yaml in local workflow project. Run sync to local again")
+	}
+
+	hasTarget, err := workflowHasTarget(workflowYamlPath, target)
+	if err != nil {
+		return &PreSimulateResult{Logs: logs}, err
+	}
+	if !hasTarget {
+		return &PreSimulateResult{Logs: logs}, fmt.Errorf("workflow.yaml does not define target %q", target)
+	}
+
+	appendLog("project: " + projectRoot)
+	appendLog("workflow: " + workflowDirName)
+	appendLog("target: " + target)
+	appendLog("Validating local secrets before simulation...")
+
+	privateKeyReady, privateKeyMsg, _ := ensurePrivateKeyConfigured(dotEnvPath)
+	appendLog(privateKeyMsg)
+	manifest, err := loadSecretsManifest(secretsYamlPath)
+	if err != nil {
+		return &PreSimulateResult{Logs: logs}, err
+	}
+	entries := listLocalSecretEntries(manifest, dotEnvPath)
+	missing := make([]LocalSecretEntry, 0)
+	for _, entry := range entries {
+		if !entry.HasValue {
+			missing = append(missing, entry)
+		}
+	}
+	if !privateKeyReady || len(missing) > 0 {
+		appendLog("Simulation blocked. Missing required local secret setup:")
+		if !privateKeyReady {
+			appendLog("- CRE_ETH_PRIVATE_KEY is missing. Open Secrets -> UPDATE VALUE.")
+		}
+		for _, entry := range missing {
+			if entry.EnvVar == "" {
+				appendLog(fmt.Sprintf("- %s has no env var mapping in secrets.yaml", entry.ID))
+				continue
+			}
+			appendLog(fmt.Sprintf("- %s (%s) is missing in .env", entry.ID, entry.EnvVar))
+		}
+		return &PreSimulateResult{Logs: logs}, errors.New("cannot simulate until all secrets are configured")
+	}
+	appendLog("All required secrets are configured.")
+
+	appendLog("Running dependency setup: bun install")
+	installLines, installErr := runCommand(workflowDir, "bun", "install")
+	for _, line := range installLines {
+		appendLog("[bun] " + line)
+	}
+	if installErr != nil {
+		return &PreSimulateResult{Logs: logs}, fmt.Errorf("bun install failed: %w", installErr)
+	}
+
+	envArg := filepath.ToSlash(filepath.Join(workflowDirName, ".env"))
+	cmdArgs := []string{"workflow", "simulate", workflowDirName, "--target", target, "-e", envArg}
+
+	return &PreSimulateResult{
+		Logs:        logs,
+		ProjectRoot: projectRoot,
+		CmdArgs:     cmdArgs,
+	}, nil
+}
+
+func IsEvmLogTriggerWorkflow(workflowID, workflowName string) bool {
+	mainTsPath := filepath.Join(localWorkflowDir(workflowID, workflowName), "main.ts")
+	raw, err := os.ReadFile(mainTsPath)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(raw), "onLogTrigger")
+}
+
+func RunWorkflowSimulateLocal(workflowID, workflowName, target, evmTxHash string, evmEventIndex int) (*SimulateCommandResult, error) {
 	logs := []string{}
 	appendLog := func(msg string) { logs = append(logs, msg) }
 
@@ -1036,8 +1155,20 @@ func RunWorkflowSimulateLocal(workflowID, workflowName, target string) (*Simulat
 	}
 
 	envArg := filepath.ToSlash(filepath.Join(workflowDirName, ".env"))
-	appendLog("Running simulation: cre workflow simulate " + workflowDirName + " --target " + target + " -e " + envArg)
-	simulateLines, simulateErr := runCommand(projectRoot, "cre", "workflow", "simulate", workflowDirName, "--target", target, "-e", envArg)
+	cmdArgs := []string{"workflow", "simulate", workflowDirName, "--target", target, "-e", envArg}
+
+	var simulateLines []string
+	var simulateErr error
+
+	if strings.TrimSpace(evmTxHash) != "" {
+		stdinData := fmt.Sprintf("%s\n%d\n", strings.TrimSpace(evmTxHash), evmEventIndex)
+		appendLog(fmt.Sprintf("Running simulation: cre %s (EVM stdin: tx=%s, index=%d)",
+			strings.Join(cmdArgs, " "), strings.TrimSpace(evmTxHash), evmEventIndex))
+		simulateLines, simulateErr = runCommandWithStdin(projectRoot, stdinData, "cre", cmdArgs...)
+	} else {
+		appendLog("Running simulation: cre " + strings.Join(cmdArgs, " "))
+		simulateLines, simulateErr = runCommand(projectRoot, "cre", cmdArgs...)
+	}
 	for _, line := range simulateLines {
 		appendLog("[cre] " + line)
 	}

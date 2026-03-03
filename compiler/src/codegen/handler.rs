@@ -11,6 +11,22 @@ use super::value_expr::emit_condition;
 use super::writer::CodeWriter;
 use crate::ir::types::*;
 
+fn emit_evm_log_event_decode(trigger: &TriggerDef, w: &mut CodeWriter) {
+    let TriggerDef::EvmLog(evm_trigger) = trigger else { return };
+    let Ok(abi_val) = serde_json::from_str::<serde_json::Value>(&evm_trigger.event_abi_json) else { return };
+    let has_inputs = abi_val.get("inputs").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    if !has_inputs { return; }
+
+    w.line("// Decode event args from EVM log");
+    w.line("const topics = triggerData.topics.map(t => bytesToHex(t)) as [`0x${string}`, ...`0x${string}`[]];");
+    w.line("const data = bytesToHex(triggerData.data);");
+    w.line(&format!(
+        "const eventArgs = decodeEventLog({{ abi: [{}], data, topics }}).args;",
+        evm_trigger.event_abi_json
+    ));
+    w.blank();
+}
+
 /// Emit the handler function signature and body.
 pub fn emit_handler(
     ir: &WorkflowIR,
@@ -43,6 +59,9 @@ pub fn emit_handler(
     // BigInt-safe stringify helper for auto-logging
     w.line("const __stringify = (v: unknown) => JSON.stringify(v, (_, x) => typeof x === \"bigint\" ? x.toString() : x);");
     w.blank();
+
+    // Decode EVM log event args if trigger has a non-empty event ABI
+    emit_evm_log_event_decode(&ir.trigger, w);
 
     // Emit the block
     emit_block(&ir.handler_body, fetch_contexts, w);

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -142,6 +144,13 @@ type loginFinishedMsg struct {
 type actionFinishedMsg struct {
 	logs []string
 	err  error
+}
+
+type preSimulateReadyMsg struct {
+	logs        []string
+	projectRoot string
+	cmdArgs     []string
+	err         error
 }
 
 type syncLocalFinishedMsg struct {
@@ -381,13 +390,13 @@ func loginCmd(baseURL string) tea.Cmd {
 	}
 }
 
-func actionCmd(actionID, workflowID, workflowName string) tea.Cmd {
+func actionCmd(actionID, workflowID, workflowName, evmTxHash string, evmEventIndex int) tea.Cmd {
 	return func() tea.Msg {
 		var logs []string
 		var err error
 		switch actionID {
 		case "simulate":
-			result, runErr := core.RunWorkflowSimulateLocal(workflowID, workflowName, "staging-settings")
+			result, runErr := core.RunWorkflowSimulateLocal(workflowID, workflowName, "staging-settings", evmTxHash, evmEventIndex)
 			if result != nil {
 				logs = append(logs, result.Logs...)
 			}
@@ -399,6 +408,21 @@ func actionCmd(actionID, workflowID, workflowName string) tea.Cmd {
 			logs = append(logs, "Use local simulation/sync flows for now.")
 		}
 		return actionFinishedMsg{logs: logs, err: err}
+	}
+}
+
+func preSimulateCmd(workflowID, workflowName string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := core.PreSimulateLocal(workflowID, workflowName, "staging-settings")
+		if result == nil {
+			return preSimulateReadyMsg{err: err}
+		}
+		return preSimulateReadyMsg{
+			logs:        result.Logs,
+			projectRoot: result.ProjectRoot,
+			cmdArgs:     result.CmdArgs,
+			err:         err,
+		}
 	}
 }
 
@@ -967,6 +991,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendLog("Authentication completed. Loading workflows...")
 		m.appendLog("Loading workflows from frontend API...")
 		return m, tea.Batch(refreshWorkflowsCmd(m.webBaseURL, m.token), creWhoAmICmd())
+
+	case preSimulateReadyMsg:
+		for _, line := range msg.logs {
+			m.appendLog(line)
+		}
+		if msg.err != nil {
+			m.appendLog("Pre-simulation failed: " + msg.err.Error())
+			m.busy = false
+			return m, nil
+		}
+		m.appendLog("Handing off to cre simulate — TUI suspended, press Ctrl+C to abort.")
+		var buf bytes.Buffer
+		cmd := exec.Command("cre", msg.cmdArgs...)
+		cmd.Dir = msg.projectRoot
+		cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+			out := make([]string, 0, len(lines))
+			for _, l := range lines {
+				if strings.TrimSpace(l) != "" {
+					out = append(out, "[cre] "+l)
+				}
+			}
+			if err != nil {
+				return actionFinishedMsg{logs: append(out, "simulate exited: "+err.Error()), err: err}
+			}
+			return actionFinishedMsg{logs: append(out, "Simulation completed.")}
+		})
 
 	case actionFinishedMsg:
 		for _, line := range msg.logs {
@@ -1603,6 +1656,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
+				if action.id == "simulate" {
+					workflow := m.selectedWorkflow()
+					if workflow == nil {
+						m.appendLog("Select a workflow first.")
+						return m, nil
+					}
+					m.busy = true
+					m.appendLog(fmt.Sprintf("Action %q started for %s.", action.title, workflow.title))
+					return m, preSimulateCmd(workflow.id, workflow.title)
+				}
+
 				workflow := m.selectedWorkflow()
 				if workflow == nil {
 					m.appendLog("Select a workflow first.")
@@ -1611,7 +1675,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.busy = true
 				m.appendLog(fmt.Sprintf("Action %q started for %s.", action.title, workflow.title))
-				return m, actionCmd(action.id, workflow.id, workflow.title)
+				return m, preSimulateCmd(workflow.id, workflow.title)
 			}
 
 			var cmd tea.Cmd

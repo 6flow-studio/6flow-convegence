@@ -18,7 +18,13 @@ fn emit_value_expr_ctx(expr: &ValueExpr, config_prefix: &str) -> String {
         ValueExpr::Literal(lit) => emit_literal(lit),
         ValueExpr::Binding(binding) => emit_binding(binding),
         ValueExpr::ConfigRef { field } => format!("{}.{}", config_prefix, field),
-        ValueExpr::TriggerDataRef { field } => format!("triggerData.{}", field),
+        ValueExpr::TriggerDataRef { field } => {
+            if field.starts_with("eventArgs") {
+                field.clone()
+            } else {
+                format!("triggerData.{}", field)
+            }
+        }
         ValueExpr::Template { parts } => emit_template_ctx(parts, config_prefix),
         ValueExpr::RawExpr { expr } => expr.clone(),
     }
@@ -185,6 +191,14 @@ mod tests {
         assert_eq!(
             emit_value_expr(&ValueExpr::trigger_data("scheduledTime")),
             "triggerData.scheduledTime"
+        );
+    }
+
+    #[test]
+    fn trigger_data_ref_event_args() {
+        assert_eq!(
+            emit_value_expr(&ValueExpr::trigger_data("eventArgs.marketId")),
+            "eventArgs.marketId"
         );
     }
 

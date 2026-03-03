@@ -103,6 +103,7 @@ function renderNodeConfig(
           config={typedConfig<Parameters<typeof EvmLogTriggerConfigRenderer>[0]["config"]>(config)}
           onChange={onChange}
           isTestnet={isTestnet}
+          nodeId={nodeId}
         />
       );
     case "evmRead":
