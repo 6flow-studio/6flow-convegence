@@ -98,6 +98,13 @@ pub fn validate_node_config(node: &WorkflowNode, global: &GlobalConfig) -> Vec<C
                     node_id.clone(),
                 ));
             }
+            if n.data.config.encoded_data.trim().is_empty() {
+                errors.push(CompilerError::validate(
+                    "N006",
+                    "EVM write encoded data reference must not be empty",
+                    node_id.clone(),
+                ));
+            }
             if let Ok(gas) = n.data.config.gas_limit.parse::<u64>() {
                 if gas > 5_000_000 {
                     errors.push(CompilerError::validate(

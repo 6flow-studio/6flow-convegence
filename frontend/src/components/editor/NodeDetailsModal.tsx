@@ -133,6 +133,7 @@ function renderNodeConfig(
         <AbiEncodeConfigRenderer
           config={typedConfig<Parameters<typeof AbiEncodeConfigRenderer>[0]["config"]>(config)}
           onChange={onChange}
+          nodeId={nodeId}
         />
       );
     case "abiDecode":
@@ -140,6 +141,7 @@ function renderNodeConfig(
         <AbiDecodeConfigRenderer
           config={typedConfig<Parameters<typeof AbiDecodeConfigRenderer>[0]["config"]>(config)}
           onChange={onChange}
+          nodeId={nodeId}
         />
       );
     case "merge":

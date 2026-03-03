@@ -114,8 +114,7 @@ export const NODE_REGISTRY: NodeRegistryEntry[] = [
       chainSelectorName: "ethereum-testnet-sepolia",
       receiverAddress: "",
       gasLimit: "500000",
-      abiParams: [],
-      dataMapping: [],
+      encodedData: "",
     },
   },
 

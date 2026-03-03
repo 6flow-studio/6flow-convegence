@@ -642,15 +642,7 @@ fn lower_evm_write(
     let binding_name = make_evm_binding_name(&config.chain_selector_name);
     let gas_limit: i64 = config.gas_limit.parse().unwrap_or(500_000);
 
-    // For EvmWrite, the data needs to be pre-encoded. The dataMapping provides
-    // the raw args, but we need an ABI encode step. For a standalone EvmWrite node,
-    // the user is expected to have an AbiEncode node upstream providing encoded data.
-    // We use the first data mapping reference as the encoded_data source.
-    let encoded_data = if let Some(first) = config.data_mapping.first() {
-        resolve_value_expr(&first.value, id_map)
-    } else {
-        ValueExpr::raw("/* no data mapping */")
-    };
+    let encoded_data = resolve_value_expr(&config.encoded_data, id_map);
 
     let op = Operation::EvmWrite(EvmWriteOp {
         evm_client_binding: binding_name,

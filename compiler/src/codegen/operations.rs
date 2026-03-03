@@ -168,6 +168,30 @@ pub fn emit_evm_write(step: &Step, op: &EvmWriteOp, w: &mut CodeWriter) {
         w.line(&format!("gasConfig: {{ gasLimit: {} }},", gas_str));
         w.dedent();
         w.line("}).result();");
+
+        // Step 3: check txStatus
+        w.line(&format!(
+            "if ({}.txStatus !== TxStatus.SUCCESS) {{",
+            out.variable_name,
+        ));
+        w.indent();
+        w.line(&format!(
+            "throw new Error(`Failed to write report: ${{{}.errorMessage || {}.txStatus}}`);",
+            out.variable_name, out.variable_name,
+        ));
+        w.dedent();
+        w.line("}");
+
+        // Step 4: log txHash
+        let tx_hash_var = format!("txHash_{}", step.id.replace('-', "_"));
+        w.line(&format!(
+            "const {} = {}.txHash || new Uint8Array(32);",
+            tx_hash_var, out.variable_name,
+        ));
+        w.line(&format!(
+            "runtime.log(`Write report transaction succeeded at txHash: ${{bytesToHex({})}}`);",
+            tx_hash_var,
+        ));
     }
 }
 

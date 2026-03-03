@@ -413,8 +413,7 @@ pub struct EvmWriteConfig {
     pub chain_selector_name: String,
     pub receiver_address: String,
     pub gas_limit: String,
-    pub abi_params: Vec<AbiParameter>,
-    pub data_mapping: Vec<EvmArgDef>,
+    pub encoded_data: String,
     pub value: Option<String>,
 }
 

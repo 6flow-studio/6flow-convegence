@@ -319,8 +319,7 @@ export interface EvmWriteConfig {
   chainSelectorName: ChainSelectorName;
   receiverAddress: string; // Consumer contract address (must implement IReceiver)
   gasLimit: string; // Max "5000000" per CRE
-  abiParams: AbiParameter[];
-  dataMapping: EvmArg[];
+  encodedData: string; // "{{abiEncode_1.encoded}}" reference from upstream AbiEncode node
   value?: string; // Native currency amount (wei as string)
 }
 
@@ -668,7 +667,9 @@ export type { ChainSelectorName } from "../supportedChain";
  *                                                       |
  *                                           true -------+------- false
  *                                             |                    |
- *                                        [EVM Write]          [Return]
+ *                                       [ABI Encode]          [Return]
+ *                                             |
+ *                                        [EVM Write]
  *                                             |
  *                                         [Return]
  */
@@ -739,38 +740,41 @@ export const exampleWorkflow: Workflow = {
       },
     },
     {
+      id: "encode-1",
+      type: "abiEncode",
+      position: { x: 900, y: 100 },
+      data: {
+        label: "Encode Mint Data",
+        config: {
+          abiParams: [
+            { name: "to", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+          dataMapping: [
+            { paramName: "to", source: "{{parse-1.walletAddress}}" },
+            { paramName: "amount", source: "{{parse-1.tokenAmount}}" },
+          ],
+        },
+      },
+    },
+    {
       id: "write-1",
       type: "evmWrite",
-      position: { x: 900, y: 100 },
+      position: { x: 1100, y: 100 },
       data: {
         label: "Write to Contract",
         config: {
           chainSelectorName: "ethereum-testnet-sepolia",
           receiverAddress: "0x1234567890abcdef1234567890abcdef12345678",
           gasLimit: "500000",
-          abiParams: [
-            { name: "to", type: "address" },
-            { name: "amount", type: "uint256" },
-          ],
-          dataMapping: [
-            {
-              type: "reference",
-              value: "{{parse-1.walletAddress}}",
-              abiType: "address",
-            },
-            {
-              type: "reference",
-              value: "{{parse-1.tokenAmount}}",
-              abiType: "uint256",
-            },
-          ],
+          encodedData: "{{encode-1.encoded}}",
         },
       },
     },
     {
       id: "return-1",
       type: "return",
-      position: { x: 1100, y: 100 },
+      position: { x: 1300, y: 100 },
       data: {
         label: "Return Success",
         config: { returnExpression: '"Minted successfully"' },
@@ -779,7 +783,7 @@ export const exampleWorkflow: Workflow = {
     {
       id: "return-2",
       type: "return",
-      position: { x: 1100, y: 300 },
+      position: { x: 1300, y: 300 },
       data: {
         label: "Return Rejected",
         config: { returnExpression: '"KYC not approved"' },
@@ -790,9 +794,10 @@ export const exampleWorkflow: Workflow = {
     { id: "e1", source: "trigger-1", target: "http-1" },
     { id: "e2", source: "http-1", target: "parse-1" },
     { id: "e3", source: "parse-1", target: "condition-1" },
-    { id: "e4", source: "condition-1", target: "write-1", sourceHandle: "true" },
+    { id: "e4", source: "condition-1", target: "encode-1", sourceHandle: "true" },
     { id: "e5", source: "condition-1", target: "return-2", sourceHandle: "false" },
-    { id: "e6", source: "write-1", target: "return-1" },
+    { id: "e6", source: "encode-1", target: "write-1" },
+    { id: "e7", source: "write-1", target: "return-1" },
   ],
   createdAt: "2025-01-01T00:00:00Z",
   updatedAt: "2025-01-01T00:00:00Z",

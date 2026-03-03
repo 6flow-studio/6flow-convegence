@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Plus } from "lucide-react";
 import { ABI_TYPES } from "../config-fields/AbiParamsEditor";
 import { DroppableInput } from "../config-fields/DroppableInput";
 import { FieldLabel } from "../config-fields/FieldLabel";
-import type { AbiEncodeConfig, AbiParameter } from "@6flow/shared/model/node";
+import type {
+  AbiEncodeConfig,
+  AbiParameter,
+  DataSchema,
+} from "@6flow/shared/model/node";
+import { useEditorStore } from "@/lib/editor-store";
 
 interface UnifiedParam {
   name: string;
@@ -16,7 +22,23 @@ interface UnifiedParam {
 interface Props {
   config: AbiEncodeConfig;
   onChange: (patch: Record<string, unknown>) => void;
+  nodeId?: string;
 }
+
+const ABI_ENCODE_OUTPUT_SCHEMA: DataSchema = {
+  type: "object",
+  path: "",
+  fields: [
+    {
+      key: "encoded",
+      path: "encoded",
+      schema: {
+        type: "string",
+        path: "encoded",
+      },
+    },
+  ],
+};
 
 /** Zip abiParams + dataMapping into unified rows */
 function deriveRows(config: AbiEncodeConfig): UnifiedParam[] {
@@ -53,8 +75,17 @@ function emitArrays(rows: UnifiedParam[]) {
 const inputClass =
   "h-7 rounded border border-edge-dim bg-surface-2 px-2 text-[11px] text-zinc-300 font-mono focus:border-accent-blue focus:outline-none transition-colors min-w-0";
 
-export function AbiEncodeConfigRenderer({ config, onChange }: Props) {
+export function AbiEncodeConfigRenderer({ config, onChange, nodeId }: Props) {
   const rows = deriveRows(config);
+  const updateNodeEditor = useEditorStore((state) => state.updateNodeEditor);
+
+  useEffect(() => {
+    if (!nodeId) return;
+    updateNodeEditor(nodeId, {
+      outputSchema: ABI_ENCODE_OUTPUT_SCHEMA,
+      schemaSource: "derived",
+    });
+  }, [nodeId, updateNodeEditor]);
 
   function commit(next: UnifiedParam[]) {
     onChange(emitArrays(next));
