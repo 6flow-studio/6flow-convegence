@@ -50,6 +50,7 @@ function renderNodeConfig(
         <CodeNodeConfigRenderer
           config={typedConfig<Parameters<typeof CodeNodeConfigRenderer>[0]["config"]>(config)}
           onChange={onChange}
+          nodeId={nodeId}
         />
       );
     case "httpRequest":
@@ -102,6 +103,7 @@ function renderNodeConfig(
           config={typedConfig<Parameters<typeof EvmLogTriggerConfigRenderer>[0]["config"]>(config)}
           onChange={onChange}
           isTestnet={isTestnet}
+          nodeId={nodeId}
         />
       );
     case "evmRead":
@@ -420,6 +422,15 @@ function UpstreamPreview({ node }: { node: WorkflowNode }) {
         />
       );
     }
+    if (schema) {
+      return (
+        <div className="space-y-3">
+          <CollapsibleSection label="Output Schema" defaultOpen>
+            <SchemaTree schema={schema} upstreamNodeId={node.id} upstreamNodeName={node.data.label} />
+          </CollapsibleSection>
+        </div>
+      );
+    }
     return (
       <EmptyState
         icon={<Clock size={20} className="text-amber-400/60" />}
@@ -442,7 +453,7 @@ function UpstreamPreview({ node }: { node: WorkflowNode }) {
 
       {schema && (
         <CollapsibleSection label="Output Schema" defaultOpen>
-          <SchemaTree schema={schema} upstreamNodeId={node.id} />
+          <SchemaTree schema={schema} upstreamNodeId={node.id} upstreamNodeName={node.data.label} />
         </CollapsibleSection>
       )}
 

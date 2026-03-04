@@ -20,6 +20,7 @@ import {
   DEFAULT_WORKFLOW_GLOBAL_CONFIG,
   cloneGlobalConfig,
 } from "./workflow-defaults";
+import { getAIOutputDataSchema } from "@6flow/shared/listAIProviders";
 
 export interface WorkflowNodeData {
   label: string;
@@ -88,6 +89,24 @@ function generateReadableNodeId(label: string): string {
   return `${toReadableNodeIdLabel(label)}_${nodeIdCounter++}`;
 }
 
+function getInitialEditorForNode(
+  type: NodeType,
+  config: Record<string, unknown>
+): NodeEditorMetadata | undefined {
+  if (type === "ai") {
+    const provider = (config.provider as string) ?? "openai";
+    const providerName =
+      provider === "anthropic" ? "Anthropic"
+      : provider === "google" ? "Google"
+      : "OpenAI";
+    return {
+      outputSchema: getAIOutputDataSchema(providerName),
+      schemaSource: "declared",
+    };
+  }
+  return undefined;
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   nodes: [],
   edges: [],
@@ -115,6 +134,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const entry = getNodeEntry(type);
     if (!entry) return;
 
+    const editor = getInitialEditorForNode(type, entry.defaultConfig);
     const newNode: WorkflowNode = {
       id: generateNodeId(),
       type: entry.category,
@@ -123,6 +143,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         label: entry.label,
         nodeType: type,
         config: { ...entry.defaultConfig },
+        ...(editor ? { editor } : {}),
       },
     };
 
@@ -232,8 +253,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   loadWorkflow: (nodes, edges) => {
+    const migratedNodes = nodes.map((node) => {
+      if (node.data.nodeType === "ai" && !node.data.editor?.outputSchema) {
+        const editor = getInitialEditorForNode("ai", node.data.config);
+        if (editor) {
+          return { ...node, data: { ...node.data, editor: { ...node.data.editor, ...editor } } };
+        }
+      }
+      return node;
+    });
     set({
-      nodes,
+      nodes: migratedNodes,
       edges,
       selectedNodeId: null,
       workflowErrors: [],

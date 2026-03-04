@@ -149,7 +149,7 @@ pub enum TriggerParam {
     CronTrigger,
     /// `triggerData: HTTPPayload` — has `input: Uint8Array`.
     HttpRequest,
-    /// `log: EVMLog` — has `topics`, `data`, `address`.
+    /// `log: EVMLog` — has topics (Uint8Array[]), data (Uint8Array), address (string), blockNumber (bigint), logIndex (number), transactionHash (Uint8Array).
     EvmLog,
 }
 

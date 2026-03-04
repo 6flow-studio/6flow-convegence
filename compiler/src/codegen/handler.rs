@@ -11,6 +11,73 @@ use super::value_expr::emit_condition;
 use super::writer::CodeWriter;
 use crate::ir::types::*;
 
+fn solidity_type_to_ts(sol_type: &str) -> &'static str {
+    if sol_type.starts_with("uint") || sol_type.starts_with("int") {
+        "bigint"
+    } else if sol_type == "bool" {
+        "boolean"
+    } else {
+        "string"
+    }
+}
+
+fn emit_evm_log_event_decode(trigger: &TriggerDef, w: &mut CodeWriter) {
+    let TriggerDef::EvmLog(evm_trigger) = trigger else { return };
+
+    // Always declare log metadata (present on every EVMLog)
+    w.line("// EVM log metadata");
+    w.line("const blockNumber: bigint = log.blockNumber;");
+    w.line("const logIndex: number = log.index;");
+    w.line("const transactionHash: string = bytesToHex(log.blockHash);");
+    w.blank();
+
+    // Decode event ABI args only when the event has input parameters
+    let Ok(abi_val) = serde_json::from_str::<serde_json::Value>(&evm_trigger.event_abi_json) else { return };
+    let Some(inputs) = abi_val.get("inputs").and_then(|v| v.as_array()) else { return };
+    if inputs.is_empty() { return; }
+
+    w.line("// Decode event args from EVM log");
+    w.line("const topics = log.topics.map(t => bytesToHex(t)) as [`0x${string}`, ...`0x${string}`[]];");
+    w.line("const data = bytesToHex(log.data);");
+    w.line("const decodedLog = decodeEventLog({ abi: eventAbi, data, topics });");
+    w.blank();
+
+    for input in inputs {
+        let name = input.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let sol_type = input.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let ts_type = solidity_type_to_ts(sol_type);
+        w.line(&format!(
+            "const {}: {} = decodedLog.args.{} as {};",
+            name, ts_type, name, ts_type
+        ));
+    }
+    w.blank();
+}
+
+pub fn emit_evm_log_module_consts(ir: &WorkflowIR, w: &mut CodeWriter) {
+    let TriggerDef::EvmLog(evm_trigger) = &ir.trigger else { return };
+    let Ok(abi_val) = serde_json::from_str::<serde_json::Value>(&evm_trigger.event_abi_json) else { return };
+    let Some(inputs) = abi_val.get("inputs").and_then(|v| v.as_array()) else { return };
+    if inputs.is_empty() { return; }
+
+    let event_name = abi_val.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let params: Vec<String> = inputs.iter().map(|input| {
+        let typ = input.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let name = input.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let indexed = input.get("indexed").and_then(|v| v.as_bool()).unwrap_or(false);
+        if indexed {
+            format!("{} indexed {}", typ, name)
+        } else {
+            format!("{} {}", typ, name)
+        }
+    }).collect();
+
+    let human_readable = format!("event {}({})", event_name, params.join(", "));
+    w.line(&format!("const eventAbi = parseAbi([\"{}\"]);" , human_readable));
+    w.line(&format!("const eventSignature = \"{}\";", evm_trigger.event_signature));
+    w.blank();
+}
+
 /// Emit the handler function signature and body.
 pub fn emit_handler(
     ir: &WorkflowIR,
@@ -20,7 +87,7 @@ pub fn emit_handler(
     let (handler_name, trigger_type, trigger_param) = match &ir.trigger_param {
         TriggerParam::CronTrigger => ("onCronTrigger", "CronTrigger", "triggerData"),
         TriggerParam::HttpRequest => ("onHttpRequest", "HTTPPayload", "triggerData"),
-        TriggerParam::EvmLog => ("onLogTrigger", "EVMLog", "triggerData"),
+        TriggerParam::EvmLog => ("onLogTrigger", "EVMLog", "log"),
         TriggerParam::None => ("onTrigger", "", ""),
     };
 
@@ -43,6 +110,9 @@ pub fn emit_handler(
     // BigInt-safe stringify helper for auto-logging
     w.line("const __stringify = (v: unknown) => JSON.stringify(v, (_, x) => typeof x === \"bigint\" ? x.toString() : x);");
     w.blank();
+
+    // Decode EVM log event args if trigger has a non-empty event ABI
+    emit_evm_log_event_decode(&ir.trigger, w);
 
     // Emit the block
     emit_block(&ir.handler_body, fetch_contexts, w);

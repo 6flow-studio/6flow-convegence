@@ -21,8 +21,10 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { SelectField, TagInput } from "../config-fields";
+import { SelectField } from "../config-fields";
 import { editorTheme, editorHighlighting } from "./codemirror-theme";
+import { buildVariableCompletions } from "./variable-completions";
+import { useScopedVariables } from "@/hooks/useScopedVariables";
 import type { CodeExecutionMode } from "@6flow/shared/model/node";
 
 interface CodeEditorSheetProps {
@@ -34,8 +36,7 @@ interface CodeEditorSheetProps {
   onLanguageChange: (language: string) => void;
   executionMode: CodeExecutionMode;
   onExecutionModeChange: (mode: CodeExecutionMode) => void;
-  inputVariables: string[];
-  onInputVariablesChange: (vars: string[]) => void;
+  returnLine?: string;
 }
 
 export function CodeEditorSheet({
@@ -47,14 +48,21 @@ export function CodeEditorSheet({
   onLanguageChange,
   executionMode,
   onExecutionModeChange,
-  inputVariables,
-  onInputVariablesChange,
+  returnLine,
 }: CodeEditorSheetProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
   const onCodeChangeRef = useRef(onCodeChange);
   onCodeChangeRef.current = onCodeChange;
+
+  // Keep a ref to the current code so initEditor always initializes with the latest value
+  const codeRef = useRef(code);
+  codeRef.current = code;
+
+  const scopedVariables = useScopedVariables();
+  const scopedVarsRef = useRef(scopedVariables);
+  scopedVarsRef.current = scopedVariables;
 
   const initEditor = useCallback(() => {
     if (!editorContainerRef.current) return;
@@ -65,8 +73,19 @@ export function CodeEditorSheet({
       viewRef.current = null;
     }
 
+    const completionSource = buildVariableCompletions(() =>
+      scopedVarsRef.current.map((v) => ({ label: v.codeInsert, detail: v.type })),
+    );
+
+    const blockReturnKeyword = EditorState.transactionFilter.of((tr) => {
+      if (!tr.docChanged) return tr;
+      const newDoc = tr.newDoc.toString();
+      const hasReturn = newDoc.split("\n").some((line) => /^\s*return\b/.test(line));
+      return hasReturn ? [] : tr;
+    });
+
     const state = EditorState.create({
-      doc: code,
+      doc: codeRef.current,
       extensions: [
         lineNumbers(),
         history(),
@@ -74,10 +93,11 @@ export function CodeEditorSheet({
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
-        autocompletion(),
+        autocompletion({ override: [completionSource] }),
         javascript({ typescript: true }),
         editorTheme,
         editorHighlighting,
+        blockReturnKeyword,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
@@ -110,6 +130,17 @@ export function CodeEditorSheet({
       viewRef.current = null;
     }
   }, [open, initEditor]);
+
+  function insertAtCursor(text: string) {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+    view.focus();
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -160,17 +191,66 @@ export function CodeEditorSheet({
           </div>
         </div>
 
-        {/* Editor */}
-        <div ref={editorContainerRef} className="flex-1 overflow-auto" />
+        {/* Variables in scope chip bar */}
+        {scopedVariables.length > 0 && (
+          <div className="px-4 py-2 border-b border-edge-dim flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-zinc-600 shrink-0">In scope:</span>
+            {scopedVariables.map((v) => (
+              <button
+                key={v.expression}
+                type="button"
+                onClick={() => insertAtCursor(v.codeInsert)}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-edge-dim bg-surface-2 hover:bg-surface-3 hover:border-edge-bright transition-colors cursor-pointer"
+                title={`Insert ${v.codeInsert}`}
+              >
+                <span className="font-mono text-[11px] text-zinc-300">{v.name}</span>
+                <span className="text-[10px] text-zinc-600">{v.type}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* Footer: Input Variables */}
-        <div className="px-4 py-2.5 border-t border-edge-dim">
-          <TagInput
-            label="Input Variables"
-            value={inputVariables}
-            onChange={onInputVariablesChange}
-            placeholder="Type variable name and press Enter..."
-          />
+        {/* Editor + auto-generated return line */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-auto">
+          <div ref={editorContainerRef} />
+          {returnLine && (
+            <>
+              <div
+                className="shrink-0 px-3 py-1 border-t border-edge-dim font-mono text-[11px] text-orange-500 select-none"
+                style={{ backgroundColor: "rgb(24, 24, 27)" }}
+              >
+                6flow will automatically return the following value from this node. To customize it, edit the output fields in the node config. <br />
+                No type checking is done in the current version, so make sure the returned value matches the expected type in the node config.
+              </div>
+              <div
+                className="shrink-0 flex items-center font-mono text-[13px] select-none"
+                style={{ backgroundColor: "rgb(24, 24, 27)" }}
+              >
+                {/* Gutter */}
+                <div
+                  className="text-right shrink-0"
+                  style={{ minWidth: "32px", paddingRight: "8px", color: "#52525b" }}
+                >
+                  {code.split("\n").length + 1}
+                </div>
+                {/* Line content with syntax coloring */}
+                <div className="flex-1" style={{ padding: "1px 12px" }}>
+                  <span style={{ color: "#c084fc" }}>return</span>
+                  <span style={{ color: "#71717a" }}>{" { "}</span>
+                  <span style={{ color: "#d4d4d8" }}>
+                    {returnLine
+                      .replace(/^return \{ /, "")
+                      .replace(/ \};$/, "")}
+                  </span>
+                  <span style={{ color: "#71717a" }}>{" };"}</span>
+                </div>
+                {/* Auto badge */}
+                <div className="shrink-0 pr-3 text-[10px]" style={{ color: "#3f3f46" }}>
+                  auto
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>

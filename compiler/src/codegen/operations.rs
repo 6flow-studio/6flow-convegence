@@ -235,13 +235,38 @@ pub fn emit_code_node(step: &Step, op: &CodeNodeOp, w: &mut CodeWriter) {
     w.line("})();");
 }
 
+fn needs_bigint(ty: &str) -> bool {
+    ty.starts_with("uint") || ty.starts_with("int")
+}
+
 /// Emit an AbiEncode expression.
 pub fn emit_abi_encode(step: &Step, op: &AbiEncodeOp, w: &mut CodeWriter) {
     w.line(&format!("// {}", step.label));
+
+    // Build param_name -> abi_type map from abi_json for BigInt wrapping
+    let type_map: HashMap<String, String> =
+        serde_json::from_str::<Vec<serde_json::Value>>(&op.abi_json)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| {
+                let name = v.get("name")?.as_str()?.to_string();
+                let ty = v.get("type")?.as_str()?.to_string();
+                Some((name, ty))
+            })
+            .collect();
+
     let args: Vec<String> = op
         .data_mappings
         .iter()
-        .map(|m| emit_value_expr(&m.value))
+        .map(|m| {
+            let val = emit_value_expr(&m.value);
+            if let Some(ty) = type_map.get(&m.param_name) {
+                if needs_bigint(ty) {
+                    return format!("BigInt({})", val);
+                }
+            }
+            val
+        })
         .collect();
 
     if let Some(ref out) = step.output {

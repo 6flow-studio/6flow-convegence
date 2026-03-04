@@ -116,7 +116,9 @@ fn scan_expr(
     counter: &mut usize,
 ) {
     match expr {
-        ValueExpr::Binding(_) | ValueExpr::TriggerDataRef { .. } => {
+        // RawExpr is used for handler-scoped bare variable refs (e.g. EVM log trigger args).
+        // They must be passed through the augmented config just like Binding/TriggerDataRef.
+        ValueExpr::Binding(_) | ValueExpr::TriggerDataRef { .. } | ValueExpr::RawExpr { .. } => {
             let key_str = emit_value_expr(expr);
             if !seen.contains_key(&key_str) {
                 let config_key = format!("_dyn{}", *counter);
@@ -135,14 +137,14 @@ fn scan_expr(
                 }
             }
         }
-        _ => {} // Literal, ConfigRef, RawExpr are fine in fetch scope
+        _ => {} // Literal, ConfigRef are fine in fetch scope
     }
 }
 
 /// Substitute handler-scoped refs in a ValueExpr with `config._dynN` references.
 fn subst_expr(expr: &ValueExpr, mapping: &HashMap<String, String>) -> ValueExpr {
     match expr {
-        ValueExpr::Binding(_) | ValueExpr::TriggerDataRef { .. } => {
+        ValueExpr::Binding(_) | ValueExpr::TriggerDataRef { .. } | ValueExpr::RawExpr { .. } => {
             let key = emit_value_expr(expr);
             if let Some(config_key) = mapping.get(&key) {
                 ValueExpr::RawExpr {

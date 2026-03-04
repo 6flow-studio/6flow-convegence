@@ -14,8 +14,7 @@ interface CodeEditorFieldProps {
   onLanguageChange: (language: string) => void;
   executionMode: CodeExecutionMode;
   onExecutionModeChange: (mode: CodeExecutionMode) => void;
-  inputVariables: string[];
-  onInputVariablesChange: (vars: string[]) => void;
+  returnLine?: string;
 }
 
 export function CodeEditorField({
@@ -25,8 +24,7 @@ export function CodeEditorField({
   onLanguageChange,
   executionMode,
   onExecutionModeChange,
-  inputVariables,
-  onInputVariablesChange,
+  returnLine,
 }: CodeEditorFieldProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,8 +92,7 @@ export function CodeEditorField({
         onLanguageChange={onLanguageChange}
         executionMode={executionMode}
         onExecutionModeChange={onExecutionModeChange}
-        inputVariables={inputVariables}
-        onInputVariablesChange={onInputVariablesChange}
+        returnLine={returnLine}
       />
     </div>
   );
