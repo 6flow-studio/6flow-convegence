@@ -1,14 +1,16 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -40,6 +42,15 @@ const (
 	focusWorkflows focusPane = iota
 	focusActions
 	focusConsole
+)
+
+const (
+	layoutHeaderHeight   = 3
+	layoutFooterHeight   = 2
+	layoutMinMainHeight  = 12
+	layoutMinPaneWidth   = 24
+	layoutMinPaneHeight  = 6
+	layoutMinConsolePane = 8
 )
 
 type authState string
@@ -187,6 +198,18 @@ type copyNoticeClearedMsg struct {
 	id int
 }
 
+type simulateStreamStartedMsg struct {
+	ch <-chan tea.Msg
+}
+
+type simulateStreamLineMsg struct {
+	line string
+}
+
+type simulateStreamDoneMsg struct {
+	err error
+}
+
 type model struct {
 	phase     appPhase
 	authState authState
@@ -233,6 +256,15 @@ type model struct {
 	secretFormError         string
 	secretIDLocked          bool
 	secretRemoveFromConvex  bool
+	simulateFormOpen        bool
+	simulateTxHashInput     textinput.Model
+	simulateEventIndexInput textinput.Model
+	simulateFormActiveField int
+	simulateFormError       string
+	simulateNeedsEVMFlags   bool
+	simulatePendingRoot     string
+	simulatePendingArgs     []string
+	simulateStreamCh        <-chan tea.Msg
 	consoleLines            []string
 	consoleSelected         int
 	copyNotice              string
@@ -335,6 +367,18 @@ func initialModel() model {
 	secretValueInput.CharLimit = 512
 	secretValueInput.Width = 70
 
+	simulateTxHashInput := textinput.New()
+	simulateTxHashInput.Placeholder = "0x..."
+	simulateTxHashInput.Prompt = "evm tx hash> "
+	simulateTxHashInput.CharLimit = 120
+	simulateTxHashInput.Width = 90
+
+	simulateEventIndexInput := textinput.New()
+	simulateEventIndexInput.Placeholder = "0"
+	simulateEventIndexInput.Prompt = "evm event index> "
+	simulateEventIndexInput.CharLimit = 12
+	simulateEventIndexInput.Width = 30
+
 	v := viewport.New(40, 10)
 	v.SetContent(withTimestamp(fmt.Sprintf("Frontend API mode enabled (%s).", base)) + "\n" + withTimestamp("Checking local authentication session..."))
 	v.GotoBottom()
@@ -355,6 +399,8 @@ func initialModel() model {
 		secretsTargets:          []string{"staging-settings"},
 		secretIDInput:           secretIDInput,
 		secretValueInput:        secretValueInput,
+		simulateTxHashInput:     simulateTxHashInput,
+		simulateEventIndexInput: simulateEventIndexInput,
 		console:                 v,
 		help:                    help.New(),
 		spinner:                 sp,
@@ -424,6 +470,102 @@ func preSimulateCmd(workflowID, workflowName string) tea.Cmd {
 			err:         err,
 		}
 	}
+}
+
+func waitForSimulateStreamCmd(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return simulateStreamDoneMsg{}
+		}
+		return msg
+	}
+}
+
+func runPreparedSimulateCmd(projectRoot string, cmdArgs []string, stdinData string) tea.Cmd {
+	return func() tea.Msg {
+		ch := make(chan tea.Msg, 64)
+		go func() {
+			defer close(ch)
+
+			cmd := exec.Command("cre", cmdArgs...)
+			cmd.Dir = projectRoot
+			if strings.TrimSpace(stdinData) != "" {
+				cmd.Stdin = strings.NewReader(stdinData)
+			}
+
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				ch <- simulateStreamDoneMsg{err: err}
+				return
+			}
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				ch <- simulateStreamDoneMsg{err: err}
+				return
+			}
+
+			if err := cmd.Start(); err != nil {
+				ch <- simulateStreamDoneMsg{err: err}
+				return
+			}
+
+			streamPipe := func(r io.Reader, wg *sync.WaitGroup) {
+				defer wg.Done()
+				scanner := bufio.NewScanner(r)
+				scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if line == "" {
+						continue
+					}
+					ch <- simulateStreamLineMsg{line: "[cre] " + line}
+				}
+				if err := scanner.Err(); err != nil {
+					ch <- simulateStreamLineMsg{line: "[cre] stream read error: " + err.Error()}
+				}
+			}
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go streamPipe(stdout, &wg)
+			go streamPipe(stderr, &wg)
+			wg.Wait()
+
+			ch <- simulateStreamDoneMsg{err: cmd.Wait()}
+		}()
+		return simulateStreamStartedMsg{ch: ch}
+	}
+}
+
+func (m *model) resetSimulateFlow() {
+	m.simulateFormOpen = false
+	m.simulateFormError = ""
+	m.simulateTxHashInput.Blur()
+	m.simulateEventIndexInput.Blur()
+	m.simulateFormActiveField = 0
+	m.simulateNeedsEVMFlags = false
+	m.simulatePendingRoot = ""
+	m.simulatePendingArgs = nil
+	m.simulateStreamCh = nil
+}
+
+func (m *model) handleSimulateDone(err error) {
+	if err != nil {
+		m.appendLog("simulate exited: " + err.Error())
+		m.appendLog("Action failed: " + err.Error())
+		m.busy = false
+		m.resetSimulateFlow()
+		return
+	}
+	m.appendLog("Simulation completed.")
+	if action := m.selectedAction(); action != nil {
+		m.appendLog(fmt.Sprintf("Action %q completed.", action.title))
+	} else {
+		m.appendLog(`Action "Simulate" completed.`)
+	}
+	m.busy = false
+	m.resetSimulateFlow()
 }
 
 func syncLocalCmd(baseURL, token, workflowID, workflowName string) tea.Cmd {
@@ -782,41 +924,42 @@ func (m *model) resize() {
 		return
 	}
 
-	headerH := 3
-	footerH := 2
-	mainH := m.height - headerH - footerH
-	if mainH < 12 {
-		mainH = 12
+	mainH := m.height - layoutHeaderHeight - layoutFooterHeight
+	if mainH < layoutMinMainHeight {
+		mainH = layoutMinMainHeight
 	}
 
-	leftW := clamp(int(float64(m.width)*0.34), 34, 52)
-	if leftW > m.width-30 {
-		leftW = m.width - 30
-	}
-	if leftW < 24 {
-		leftW = 24
-	}
-	rightW := m.width - leftW - 1
-	if rightW < 20 {
-		rightW = 20
+	// Reserve about half of the content area for the console, and keep it fixed.
+	consolePaneH := clamp(mainH/2, layoutMinConsolePane, mainH-layoutMinPaneHeight)
+	middlePaneH := mainH - consolePaneH
+	if middlePaneH < layoutMinPaneHeight {
+		middlePaneH = layoutMinPaneHeight
+		consolePaneH = mainH - middlePaneH
 	}
 
-	wfH := clamp(int(float64(mainH)*0.62), 8, mainH-6)
-	actionH := mainH - wfH
-	if actionH < 6 {
-		actionH = 6
-		wfH = mainH - actionH
+	leftPaneW := (m.width - 1) / 2
+	if leftPaneW < layoutMinPaneWidth {
+		leftPaneW = layoutMinPaneWidth
+	}
+	rightPaneW := m.width - leftPaneW - 1
+	if rightPaneW < layoutMinPaneWidth {
+		rightPaneW = layoutMinPaneWidth
+		leftPaneW = m.width - rightPaneW - 1
+	}
+	if leftPaneW < layoutMinPaneWidth {
+		leftPaneW = layoutMinPaneWidth
 	}
 
-	m.workflowList.SetSize(leftW-4, wfH-2)
-	m.actionList.SetSize(leftW-4, actionH-2)
-	m.secretsMenu.SetSize(leftW-4, actionH-2)
-	m.secretPickList.SetSize(leftW-4, actionH-2)
-	m.systemVariableList.SetSize(max(20, (m.width/2)-10), max(8, actionH))
-	m.environmentVariableList.SetSize(max(20, (m.width/2)-10), max(8, actionH))
-	m.console.Width = rightW - 2
-	// Console pane also has a 1-line header, so keep viewport 1 line shorter.
-	m.console.Height = max(6, mainH-3)
+	m.workflowList.SetSize(max(10, leftPaneW-4), max(layoutMinPaneHeight, middlePaneH-2))
+	m.actionList.SetSize(max(10, rightPaneW-4), max(layoutMinPaneHeight, middlePaneH-2))
+	m.secretsMenu.SetSize(max(10, rightPaneW-4), max(layoutMinPaneHeight, middlePaneH-2))
+	m.secretPickList.SetSize(max(10, rightPaneW-4), max(layoutMinPaneHeight, middlePaneH-2))
+	m.systemVariableList.SetSize(max(20, (m.width/2)-10), max(8, middlePaneH))
+	m.environmentVariableList.SetSize(max(20, (m.width/2)-10), max(8, middlePaneH))
+
+	// Console pane has a 1-line title and border; viewport stays fixed and scrolls.
+	m.console.Width = max(10, m.width-2)
+	m.console.Height = max(layoutMinPaneHeight, consolePaneH-3)
 	m.refreshConsoleContent()
 }
 
@@ -1001,25 +1144,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.busy = false
 			return m, nil
 		}
-		m.appendLog("Handing off to cre simulate — TUI suspended, press Ctrl+C to abort.")
-		var buf bytes.Buffer
-		cmd := exec.Command("cre", msg.cmdArgs...)
-		cmd.Dir = msg.projectRoot
-		cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-			out := make([]string, 0, len(lines))
-			for _, l := range lines {
-				if strings.TrimSpace(l) != "" {
-					out = append(out, "[cre] "+l)
-				}
-			}
-			if err != nil {
-				return actionFinishedMsg{logs: append(out, "simulate exited: "+err.Error()), err: err}
-			}
-			return actionFinishedMsg{logs: append(out, "Simulation completed.")}
-		})
+		if m.simulateNeedsEVMFlags {
+			m.busy = false
+			m.simulateFormOpen = true
+			m.simulatePendingRoot = msg.projectRoot
+			m.simulatePendingArgs = append([]string(nil), msg.cmdArgs...)
+			m.simulateFormError = ""
+			m.simulateFormActiveField = 0
+			m.simulateTxHashInput.SetValue("")
+			m.simulateEventIndexInput.SetValue("0")
+			m.simulateTxHashInput.Focus()
+			m.simulateEventIndexInput.Blur()
+			m.appendLog("Pre-simulation ready. Enter EVM trigger input.")
+			return m, nil
+		}
+		m.busy = true
+		m.appendLog("Pre-simulation ready. Running cre simulate (no stdin required).")
+		return m, runPreparedSimulateCmd(msg.projectRoot, msg.cmdArgs, "")
+
+	case simulateStreamStartedMsg:
+		m.simulateStreamCh = msg.ch
+		return m, waitForSimulateStreamCmd(msg.ch)
+
+	case simulateStreamLineMsg:
+		m.appendLog(msg.line)
+		if m.simulateStreamCh == nil {
+			return m, nil
+		}
+		return m, waitForSimulateStreamCmd(m.simulateStreamCh)
+
+	case simulateStreamDoneMsg:
+		m.handleSimulateDone(msg.err)
+		return m, nil
 
 	case actionFinishedMsg:
 		for _, line := range msg.logs {
@@ -1322,6 +1478,91 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.secretIDInput, cmd = m.secretIDInput.Update(msg)
 			} else {
 				m.secretValueInput, cmd = m.secretValueInput.Update(msg)
+			}
+			return m, cmd
+		}
+
+		if m.simulateFormOpen {
+			switch msg.String() {
+			case "esc", "backspace", "b":
+				m.simulateFormOpen = false
+				m.simulateFormError = ""
+				m.simulateTxHashInput.Blur()
+				m.simulateEventIndexInput.Blur()
+				m.simulateNeedsEVMFlags = false
+				m.simulatePendingRoot = ""
+				m.simulatePendingArgs = nil
+				m.simulateFormActiveField = 0
+				return m, nil
+			}
+
+			if key.Matches(msg, keys.Run) {
+				tx := strings.TrimSpace(m.simulateTxHashInput.Value())
+				if m.simulateFormActiveField == 0 {
+					if tx == "" {
+						m.simulateFormError = "EVM tx hash is required."
+						return m, nil
+					}
+					m.simulateFormActiveField = 1
+					m.simulateFormError = ""
+					m.simulateTxHashInput.Blur()
+					m.simulateEventIndexInput.Focus()
+					return m, nil
+				}
+
+				if tx == "" {
+					m.simulateFormError = "EVM tx hash is required."
+					return m, nil
+				}
+				if !strings.HasPrefix(tx, "0x") {
+					m.simulateFormError = "EVM tx hash must start with 0x."
+					return m, nil
+				}
+				eventIndexRaw := strings.TrimSpace(m.simulateEventIndexInput.Value())
+				eventIndex, err := strconv.Atoi(eventIndexRaw)
+				if err != nil || eventIndex < 0 {
+					m.simulateFormError = "EVM event index must be a non-negative integer."
+					return m, nil
+				}
+
+				cmdArgs := append([]string(nil), m.simulatePendingArgs...)
+				cmdArgs = append(
+					cmdArgs,
+					"--non-interactive",
+					"--trigger-index", "0",
+					"--evm-tx-hash", tx,
+					"--evm-event-index", strconv.Itoa(eventIndex),
+				)
+
+				m.simulateFormOpen = false
+				m.simulateFormError = ""
+				m.simulateTxHashInput.Blur()
+				m.simulateEventIndexInput.Blur()
+				m.simulateFormActiveField = 0
+				m.busy = true
+				m.appendLog(fmt.Sprintf("Running cre simulate with EVM flags (tx=%s, index=%d)...", tx, eventIndex))
+				return m, runPreparedSimulateCmd(m.simulatePendingRoot, cmdArgs, "")
+			}
+
+			switch msg.String() {
+			case "tab":
+				if m.simulateFormActiveField == 0 {
+					m.simulateFormActiveField = 1
+					m.simulateTxHashInput.Blur()
+					m.simulateEventIndexInput.Focus()
+				} else {
+					m.simulateFormActiveField = 0
+					m.simulateEventIndexInput.Blur()
+					m.simulateTxHashInput.Focus()
+				}
+				return m, nil
+			}
+
+			var cmd tea.Cmd
+			if m.simulateFormActiveField == 0 {
+				m.simulateTxHashInput, cmd = m.simulateTxHashInput.Update(msg)
+			} else {
+				m.simulateEventIndexInput, cmd = m.simulateEventIndexInput.Update(msg)
 			}
 			return m, cmd
 		}
@@ -1662,6 +1903,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.appendLog("Select a workflow first.")
 						return m, nil
 					}
+					m.resetSimulateFlow()
+					m.simulateNeedsEVMFlags = core.IsEvmLogTriggerWorkflow(workflow.id, workflow.title)
 					m.busy = true
 					m.appendLog(fmt.Sprintf("Action %q started for %s.", action.title, workflow.title))
 					return m, preSimulateCmd(workflow.id, workflow.title)
@@ -1867,6 +2110,35 @@ func (m model) renderVariablePickerPrompt() string {
 	return panel.Render(lipgloss.JoinVertical(lipgloss.Left, title, subtitle, "", lists))
 }
 
+func (m model) renderSimulateFormPrompt() string {
+	title := lipgloss.NewStyle().Bold(true).Render("Simulation Input (EVM)")
+	notice := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("Provide tx hash and event index for non-interactive simulate.")
+	target := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Enter on tx hash moves to index. Enter on index runs. Tab switches field. Esc cancels.")
+	txLabel := "EVM tx hash"
+	indexLabel := "EVM event index"
+	if m.simulateFormActiveField == 0 {
+		txLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render(txLabel)
+	} else {
+		indexLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render(indexLabel)
+	}
+	lines := []string{
+		title,
+		notice,
+		target,
+		"",
+		txLabel,
+		m.simulateTxHashInput.View(),
+		"",
+		indexLabel,
+		m.simulateEventIndexInput.View(),
+	}
+	if strings.TrimSpace(m.simulateFormError) != "" {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(m.simulateFormError))
+	}
+	panel := paneStyle(true).Padding(1, 2).Width(max(90, m.width-2))
+	return panel.Render(strings.Join(lines, "\n"))
+}
+
 func (m model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
@@ -1877,7 +2149,11 @@ func (m model) View() string {
 	}
 
 	leftW := m.workflowList.Width() + 4
-	rightW := m.console.Width
+	rightW := m.actionList.Width() + 4
+	totalMiddleW := leftW + 1 + rightW
+	if totalMiddleW < m.width {
+		rightW += m.width - totalMiddleW
+	}
 
 	wf := paneStyle(m.focus == focusWorkflows).Width(leftW).Render(m.workflowList.View())
 	actionsPane := m.actionList.View()
@@ -1896,8 +2172,8 @@ func (m model) View() string {
 	} else {
 		m.actionList.Title = "Actions"
 	}
-	ac := paneStyle(m.focus == focusActions).Width(leftW).Render(actionsPane)
-	leftCol := lipgloss.JoinVertical(lipgloss.Left, wf, ac)
+	ac := paneStyle(m.focus == focusActions).Width(rightW).Render(actionsPane)
+	middleRow := lipgloss.JoinHorizontal(lipgloss.Top, wf, " ", ac)
 
 	consoleHeader := "Console"
 	if m.busy {
@@ -1907,19 +2183,8 @@ func (m model) View() string {
 		lipgloss.NewStyle().Bold(true).Render(consoleHeader),
 		m.console.View(),
 	)
-	buildRightCol := func(width int) string {
-		if width < 10 {
-			width = 10
-		}
-		return paneStyle(m.focus == focusConsole).Width(width).Render(consoleBody)
-	}
-	rightCol := buildRightCol(rightW)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
-	for lipgloss.Width(body) > m.width && rightW > 10 {
-		rightW--
-		rightCol = buildRightCol(rightW)
-		body = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
-	}
+	consolePane := paneStyle(m.focus == focusConsole).Width(m.width).Render(consoleBody)
+	body := lipgloss.JoinVertical(lipgloss.Left, middleRow, consolePane)
 	footer := m.help.View(keys)
 	if m.focus == focusConsole {
 		footer += lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(" • c copy selected line")
@@ -1933,6 +2198,9 @@ func (m model) View() string {
 	}
 	if m.secretFormOpen {
 		sections = append(sections, m.renderSecretFormPrompt())
+	}
+	if m.simulateFormOpen {
+		sections = append(sections, m.renderSimulateFormPrompt())
 	}
 	sections = append(sections, footer)
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
