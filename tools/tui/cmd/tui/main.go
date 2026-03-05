@@ -334,7 +334,7 @@ func buildSecretsActions() []list.Item {
 func initialModel() model {
 	base := os.Getenv("SIXFLOW_WEB_URL")
 	if strings.TrimSpace(base) == "" {
-		base = "http://localhost:3000"
+		base = "https://6flow.studio"
 	}
 
 	user := os.Getenv("USER")

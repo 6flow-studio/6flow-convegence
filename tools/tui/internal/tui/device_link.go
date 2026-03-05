@@ -135,7 +135,7 @@ func RunBrowserLoginFlow(options BrowserLoginOptions) (BrowserLoginResult, error
 
 	base := NormalizeBaseURL(options.WebBaseURL)
 	if base == "" {
-		base = "http://localhost:3000"
+		base = "https://6flow.studio"
 	}
 
 	browserURL := fmt.Sprintf(
